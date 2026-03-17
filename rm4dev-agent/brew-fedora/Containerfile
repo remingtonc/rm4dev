@@ -1,0 +1,29 @@
+# Base OS is Fedora
+FROM quay.io/podman/stable:latest
+# Install Homebrew on Linux
+RUN dnf update -y --quiet \
+    && dnf install -y --quiet @development-tools \
+    && /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+    && chown -R podman:podman /home/linuxbrew
+USER podman
+WORKDIR /home/podman
+# Install desirable utilities
+RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install --quiet gcc oven-sh/bun/bun python uv go rustup sqlite jq ripgrep fd fzf zstd just httpie libpq ffmpeg anomalyco/tap/opencode tmux gh
+# Install Rust via rustup rather than directly Homebrew
+RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && rustup default stable
+# Install Playwright dependencies
+RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && bunx playwright install chromium
+# Persist for login shells
+RUN echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.profile \
+    && echo ". ~/.profile" >> ~/.bash_profile
+# Preserve original .config for entrypoint usage, but we want a volume to persist changes here.
+USER root
+RUN mv /home/podman/.config /home/podman/.config.bak && mv /home/podman/.local /home/podman/.local.bak
+VOLUME /home/podman/.config /home/podman/.local
+RUN chown -R podman:podman /home/podman/.config /home/podman/.local
+COPY entrypoint.sh /entrypoint.sh
+RUN chown podman:podman /entrypoint.sh && chmod +x /entrypoint.sh
+USER podman
+# Login shell for entrypoint.
+ENTRYPOINT ["/bin/bash"]
+CMD ["-lc", "/entrypoint.sh"]

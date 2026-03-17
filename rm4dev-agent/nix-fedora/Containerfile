@@ -1,0 +1,22 @@
+FROM quay.io/podman/stable:latest
+# Rootless podman and mapping user IDs is a nightmare. Container start may take hours during chowns to map users.
+# We will run as root as the expectation is a rootless container.
+USER 0
+# We will use nix for user package management.
+RUN dnf -y update \
+    && dnf -y install nix --exclude nix-daemon \
+    && dnf clean all \
+    && rm -rf /var/cache /var/log/dnf* /var/log/hawkey.log /var/log/yum.*
+COPY src/nix /var/rm4dev/nix
+RUN cd /var/rm4dev/nix \
+    && nix --extra-experimental-features "nix-command flakes" profile add .#devTools
+# Still use rustup for Rust management.
+RUN /bin/bash -lc 'rustup default stable'
+# Still want a nice entrypoint script for simple modification and usage.
+COPY src/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+WORKDIR /work
+COPY src/AGENTS.md /work/AGENTS.md
+# Login shell for entrypoint.
+ENTRYPOINT ["/bin/bash"]
+CMD ["-lc", "/entrypoint.sh"]
