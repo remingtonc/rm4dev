@@ -13,6 +13,8 @@ rm4dev agent stop [name]
 rm4dev agent rm [name]
 rm4dev agent attach [name]
 rm4dev agent enter [name]
+rm4dev image build [image]
+rm4dev image ensure [image]
 ```
 
 ## Behavior notes
@@ -26,10 +28,20 @@ rm4dev agent enter [name]
 
 ## Image configuration
 
-By default, `rm4dev` runs the image `rm4dev-agent`. Override that with:
+By default, `rm4dev` runs the image `localhost/rm4dev-agent:nix-fedora`. Override that with:
 
 ```text
 RM4DEV_IMAGE=my-image cargo run -- agent new
 ```
+
+`rm4dev` can now build the bundled `nix-fedora` image directly from the binary, without a local `rm4dev-agent/` checkout.
+
+- `rm4dev image build` builds the default image `localhost/rm4dev-agent:nix-fedora`.
+- `rm4dev image build localhost/custom-agent:dev` builds the same embedded image under a custom tag.
+- `rm4dev image ensure` only builds when the target image is missing locally.
+- `rm4dev agent new` and `rm4dev agent start` automatically ensure the default image exists before creating a new container.
+- When `RM4DEV_IMAGE` is set, image management becomes user-managed and implicit builds are skipped.
+
+The embedded build still relies on network access for upstream dependencies such as the base image and package downloads.
 
 note: opencode stores auth config in ~/.local/share/opencode/auth.json for chatgpt auth etc.
