@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
 
 # rm4dev
-`rm4dev` is a CLI for managing local software development with AI agents (Agent). At its core, this is a wrapper of [Podman](https://podman.io/). [Rootless containers](https://rootlesscontaine.rs/) will launch in the foreground of the terminal with [`tmux`](https://github.com/tmux/tmux/wiki) and [`opencode`](https://opencode.ai/) as an interface. **Only Linux has been tested.**
+`rm4dev` is a CLI for managing local software development with AI agents (Agent). At its core, this is a wrapper of [Podman](https://podman.io/). All it seeks to do is containerize agent operation with a convenient entrypoint. Currently [Rootless containers](https://rootlesscontaine.rs/) will launch in the foreground of the terminal with [`tmux`](https://github.com/tmux/tmux/wiki) and [`opencode`](https://opencode.ai/) as an interface. **Only Linux has been tested.**
 
 ## Background
 LLM (AI) providers and the tooling around the models are now sufficiently good enough at producing code and following instructions that they may operate autonomously to accomplish a well-defined task with a high rate of success. They are productive enough at this point that avoiding AI does not make sense. AI being capable of executing commands, reading files, and generally operating on its own is now referred to as operating agentically, as an AI Agent.
@@ -50,6 +50,7 @@ rm4dev-agent-stalwart    localhost/rm4dev-agent:nix-fedora  Exited (0) 9 seconds
   - Privileged containers are used to enable podman-in-podman. Rootful-in-rootless does not seem possible without privileged. The container is still rootless, but will have your user capabilities.
   - Discussion: https://github.com/containers/podman/discussions/28307
 - Fedora-based image with nix for userspace packages. `brew` was originally used but `nix` enables some useful capabilities for the Agent in troubleshooting, investigation, etc. without being beholden to NixOS but still having a highly flexible package manager separate from the system libraries.
+  - Volumes are not used. This simplifies deployment and makes the individual container portable. The alternative is many different volumes.
 - Opens tmux with OpenCode, caches OpenCode `auth.json` for non-API key logins (OpenAI Codex via ChatGPT subscription).
 - Developed in Rust.
 
