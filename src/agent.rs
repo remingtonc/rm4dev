@@ -282,6 +282,8 @@ pub(crate) fn build_podman_run_args(
         OsString::from(cpus.to_string()),
         OsString::from("--mount"),
         OsString::from("type=tmpfs,target=/tmp"),
+        OsString::from("--mount"),
+        OsString::from("type=tmpfs,target=/run"),
     ];
 
     if !no_shared_auth {
