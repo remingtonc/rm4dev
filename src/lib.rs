@@ -585,10 +585,15 @@ fn build_run_args(name: &str, mounts: &[MountSpec]) -> AppResult<Vec<OsString>> 
         OsString::from("--tty"),
         OsString::from("--name"),
         OsString::from(name),
-        OsString::from("--security-opt"),
-        OsString::from("label=disable"),
-        OsString::from("--device"),
-        OsString::from("/dev/fuse"),
+        // Must use privileged for rootful-in-rootless.
+        // https://www.redhat.com/en/blog/podman-inside-container
+        OsString::from("--privileged"),
+        // Ideally could utilize like rootless-in-rootless as below.
+        // https://github.com/containers/podman/discussions/28307
+        // OsString::from("--security-opt"),
+        // OsString::from("label=disable"),
+        // OsString::from("--device"),
+        // OsString::from("/dev/fuse"),
         OsString::from("--cpus"),
         OsString::from(cpus.to_string()),
         OsString::from("--mount"),
