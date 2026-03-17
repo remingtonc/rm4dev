@@ -1,15 +1,20 @@
+// Copyright (C) 2026 RM4 LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::cli::{ContainerTarget, CreateContainerArgs};
 use crate::error::{AppError, AppResult};
 use crate::image::{ensure_runtime_image, runtime_image};
 use crate::mounts::MountSpec;
 use crate::naming::{generate_container_name, is_agent_container_name};
 use crate::process::{run_and_capture, run_interactive};
+use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::path::PathBuf;
 
 const HOST_AUTH_PATH: &str = ".cache/rm4dev/opencode-auth.json";
 const CONTAINER_AUTH_PATH: &str = "/root/.local/share/opencode/auth.json";
+const ENTER_SHELL_ENV: &str = "RM4DEV_ENTER_SHELL";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartPlan {
@@ -90,9 +95,21 @@ pub(crate) fn enter_container(target: ContainerTarget) -> AppResult<()> {
             "--interactive".into(),
             "--tty".into(),
             name.into(),
+            enter_shell().into(),
             "-l".into(),
         ],
     )
+}
+
+pub(crate) fn enter_shell_from_env(shell: Option<String>) -> String {
+    shell
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/bin/bash".to_string())
+}
+
+fn enter_shell() -> String {
+    enter_shell_from_env(env::var(ENTER_SHELL_ENV).ok())
 }
 
 fn load_agent_containers() -> AppResult<Vec<ListedContainer>> {

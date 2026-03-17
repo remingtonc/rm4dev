@@ -1,3 +1,6 @@
+// Copyright (C) 2026 RM4 LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::cli::ImageCommandArgs;
 use crate::error::{AppError, AppResult};
 use crate::process::{render_os_args, run_for_output, run_interactive};

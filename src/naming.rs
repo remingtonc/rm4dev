@@ -1,3 +1,6 @@
+// Copyright (C) 2026 RM4 LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{AppError, AppResult};
 use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 RM4 LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 set -e
 
 SESSION=rm4dev-agent

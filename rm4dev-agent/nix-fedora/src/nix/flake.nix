@@ -1,3 +1,6 @@
+# Copyright (C) 2026 RM4 LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 {
   description = "rm4dev developer tools";
 

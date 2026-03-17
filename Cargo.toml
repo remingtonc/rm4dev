@@ -1,7 +1,15 @@
+# Copyright (C) 2026 RM4 LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 [package]
 name = "rm4dev"
 version = "0.1.0"
 edition = "2024"
+authors = ["RM4 LLC"]
+description = "Manage rm4dev agent development containers with Podman"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/remingtonc/rm4dev"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }

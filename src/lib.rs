@@ -1,3 +1,6 @@
+// Copyright (C) 2026 RM4 LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 mod agent;
 mod cli;
 mod error;
@@ -292,6 +295,27 @@ mod tests {
         assert!(rendered.starts_with(&["run".to_string(), "--interactive".to_string()]));
         assert!(rendered.contains(&"--mount".to_string()));
         assert_eq!(rendered.last().map(String::as_str), Some(DEFAULT_IMAGE));
+    }
+
+    #[test]
+    fn enter_shell_defaults_to_bash() {
+        assert_eq!(super::agent::enter_shell_from_env(None), "/bin/bash");
+    }
+
+    #[test]
+    fn enter_shell_ignores_blank_override() {
+        assert_eq!(
+            super::agent::enter_shell_from_env(Some("   ".to_string())),
+            "/bin/bash"
+        );
+    }
+
+    #[test]
+    fn enter_shell_uses_override_path() {
+        assert_eq!(
+            super::agent::enter_shell_from_env(Some("/usr/bin/zsh".to_string())),
+            "/usr/bin/zsh"
+        );
     }
 
     #[test]

@@ -1,7 +1,10 @@
+// Copyright (C) 2026 RM4 LLC
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::error::{AppError, AppResult};
-use crate::mounts::{looks_like_mount_spec, parse_mount_spec, MountSpec};
+use crate::mounts::{MountSpec, looks_like_mount_spec, parse_mount_spec};
 use crate::naming::normalize_container_name;
-use clap::{error::ErrorKind, Args, CommandFactory, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use std::ffi::OsString;
 
 const AFTER_HELP: &str = "Names are normalized to the form rm4dev-agent-<word>.\nstart resumes an existing container when it can resolve one.\nstart creates a new container when no existing match is chosen or create-only options are supplied.\nShared auth is enabled by default and binds ~/.cache/rm4dev/opencode-auth.json into /root/.local/share/opencode/auth.json in new containers; use --no-shared-auth to disable it for a new container.\nConfigure the runtime image with RM4DEV_IMAGE; default is localhost/rm4dev-agent:nix-fedora.\nimage build and image ensure accept an optional custom image reference.";

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# Copyright (C) 2026 RM4 LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # user ensures running as intended user (not sure if necessary given USER is declared in Containerfile)
 # uidmap and gidmap allow host user and container user to cooperate, otherwise host user maps to root.
 # security-opt and device are from documentation: https://www.redhat.com/en/blog/podman-inside-container

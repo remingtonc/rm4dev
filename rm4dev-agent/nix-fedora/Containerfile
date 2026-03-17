@@ -1,3 +1,6 @@
+# Copyright (C) 2026 RM4 LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 FROM quay.io/podman/stable:latest
 # Rootless podman and mapping user IDs is a nightmare. Container start may take hours during chowns to map users.
 # We will run as root as the expectation is a rootless container.
