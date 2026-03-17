@@ -27,4 +27,5 @@
   pkgs.zip
   pkgs.zstd
   pkgs.unstable.opencode
+  pkgs.gcc
 ]
