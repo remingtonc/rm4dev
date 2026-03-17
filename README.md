@@ -7,8 +7,8 @@
 ```text
 rm4dev agent precheck
 rm4dev agent list
-rm4dev agent new [name] [host_path:container_path ...]
-rm4dev agent start [name] [host_path:container_path ...]
+rm4dev agent new [--no-shared-auth] [name] [host_path:container_path ...]
+rm4dev agent start [--no-shared-auth] [name] [host_path:container_path ...]
 rm4dev agent stop [name]
 rm4dev agent rm [name]
 rm4dev agent attach [name]
@@ -23,6 +23,8 @@ rm4dev image ensure [image]
 - `start` resumes an existing container when it can resolve one unambiguously.
 - `start` creates a new container when the chosen name does not already exist, when no containers exist, or when mount specs are supplied without a target name.
 - `new` always creates a new container. If no name is provided, it generates one from the current Unix timestamp.
+- Shared auth is enabled by default and binds the host file `~/.cache/rm4dev/opencode-auth.json` into `/root/.local/share/opencode/auth.json` so OpenCode auth persists across newly created containers.
+- `--no-shared-auth` disables that default shared auth mount when creating a new container.
 - `list` shows only running `rm4dev-agent-*` containers.
 - `enter` opens a login shell inside a running container. Override the shell path with `RM4DEV_ENTER_SHELL`.
 
@@ -44,4 +46,4 @@ RM4DEV_IMAGE=my-image cargo run -- agent new
 
 The embedded build still relies on network access for upstream dependencies such as the base image and package downloads.
 
-note: opencode stores auth config in ~/.local/share/opencode/auth.json for chatgpt auth etc.
+`rm4dev` creates the host shared auth file on demand unless `--no-shared-auth` is used.

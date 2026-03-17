@@ -97,8 +97,9 @@ mod tests {
             format!("{}:/workspace", tempdir.display()),
         ];
 
-        let parsed = parse_create_args(&args).unwrap();
+        let parsed = parse_create_args(&args, false).unwrap();
         assert_eq!(parsed.name.as_deref(), Some("rm4dev-agent-alpha"));
+        assert!(!parsed.no_shared_auth);
         assert_eq!(parsed.mounts.len(), 1);
         assert_eq!(parsed.mounts[0].container, "/workspace");
     }
@@ -108,9 +109,36 @@ mod tests {
         let tempdir = std::env::temp_dir();
         let args = vec![format!("{}:/workspace", tempdir.display())];
 
-        let parsed = parse_create_args(&args).unwrap();
+        let parsed = parse_create_args(&args, false).unwrap();
         assert_eq!(parsed.name, None);
+        assert!(!parsed.no_shared_auth);
         assert_eq!(parsed.mounts.len(), 1);
+    }
+
+    #[test]
+    fn parses_no_shared_auth_flag_for_new_container() {
+        let parsed = parse_cli(["rm4dev", "agent", "new", "--no-shared-auth", "alpha"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::AgentNew(CreateContainerArgs {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: true,
+                mounts: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn shared_auth_is_enabled_by_default() {
+        let parsed = parse_cli(["rm4dev", "agent", "new", "alpha"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::AgentNew(CreateContainerArgs {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: false,
+                mounts: Vec::new(),
+            })
+        );
     }
 
     #[test]
@@ -119,6 +147,7 @@ mod tests {
             vec!["rm4dev-agent-alpha".to_string()],
             CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: false,
                 mounts: Vec::new(),
             },
         )
@@ -138,6 +167,7 @@ mod tests {
             vec!["rm4dev-agent-alpha".to_string()],
             CreateContainerArgs {
                 name: Some("rm4dev-agent-beta".to_string()),
+                no_shared_auth: false,
                 mounts: Vec::new(),
             },
         )
@@ -147,6 +177,7 @@ mod tests {
             plan,
             StartPlan::Create(CreateContainerArgs {
                 name: Some("rm4dev-agent-beta".to_string()),
+                no_shared_auth: false,
                 mounts: Vec::new(),
             })
         );
@@ -159,6 +190,7 @@ mod tests {
             vec!["rm4dev-agent-alpha".to_string()],
             CreateContainerArgs {
                 name: None,
+                no_shared_auth: false,
                 mounts: vec![mount.clone()],
             },
         )
@@ -168,6 +200,7 @@ mod tests {
             plan,
             StartPlan::Create(CreateContainerArgs {
                 name: None,
+                no_shared_auth: false,
                 mounts: vec![mount],
             })
         );
@@ -182,6 +215,7 @@ mod tests {
             ],
             CreateContainerArgs {
                 name: None,
+                no_shared_auth: false,
                 mounts: Vec::new(),
             },
         )
@@ -197,12 +231,50 @@ mod tests {
             vec!["rm4dev-agent-alpha".to_string()],
             CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: false,
                 mounts: vec![mount],
             },
         )
         .unwrap_err();
 
-        assert!(format!("{error}").contains("mount specs only apply"));
+        assert!(format!("{error}").contains("create-only options only apply"));
+    }
+
+    #[test]
+    fn start_uses_no_shared_auth_as_create_signal_without_name() {
+        let plan = plan_start(
+            vec!["rm4dev-agent-alpha".to_string()],
+            CreateContainerArgs {
+                name: None,
+                no_shared_auth: true,
+                mounts: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan,
+            StartPlan::Create(CreateContainerArgs {
+                name: None,
+                no_shared_auth: true,
+                mounts: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn start_rejects_no_shared_auth_for_existing_named_container() {
+        let error = plan_start(
+            vec!["rm4dev-agent-alpha".to_string()],
+            CreateContainerArgs {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: true,
+                mounts: Vec::new(),
+            },
+        )
+        .unwrap_err();
+
+        assert!(format!("{error}").contains("create-only options only apply"));
     }
 
     #[test]
@@ -213,7 +285,8 @@ mod tests {
     #[test]
     fn build_run_args_contains_required_flags() {
         let mount = fixture_mount(std::path::Path::new("/tmp"));
-        let args = build_podman_run_args("rm4dev-agent-alpha", &[mount], DEFAULT_IMAGE).unwrap();
+        let args =
+            build_podman_run_args("rm4dev-agent-alpha", false, &[mount], DEFAULT_IMAGE).unwrap();
         let rendered = render_os_args(&args);
 
         assert!(rendered.starts_with(&["run".to_string(), "--interactive".to_string()]));

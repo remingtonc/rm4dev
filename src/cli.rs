@@ -1,10 +1,10 @@
 use crate::error::{AppError, AppResult};
-use crate::mounts::{MountSpec, looks_like_mount_spec, parse_mount_spec};
+use crate::mounts::{looks_like_mount_spec, parse_mount_spec, MountSpec};
 use crate::naming::normalize_container_name;
-use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
+use clap::{error::ErrorKind, Args, CommandFactory, Parser, Subcommand};
 use std::ffi::OsString;
 
-const AFTER_HELP: &str = "Names are normalized to the form rm4dev-agent-<word>.\nstart resumes an existing container when it can resolve one.\nstart creates a new container when no existing match is chosen or mount specs are supplied.\nConfigure the runtime image with RM4DEV_IMAGE; default is localhost/rm4dev-agent:nix-fedora.\nimage build and image ensure accept an optional custom image reference.";
+const AFTER_HELP: &str = "Names are normalized to the form rm4dev-agent-<word>.\nstart resumes an existing container when it can resolve one.\nstart creates a new container when no existing match is chosen or create-only options are supplied.\nShared auth is enabled by default and binds ~/.cache/rm4dev/opencode-auth.json into /root/.local/share/opencode/auth.json in new containers; use --no-shared-auth to disable it for a new container.\nConfigure the runtime image with RM4DEV_IMAGE; default is localhost/rm4dev-agent:nix-fedora.\nimage build and image ensure accept an optional custom image reference.";
 
 #[derive(Debug, Parser)]
 #[command(name = "rm4dev", about = "Manage rm4dev Podman containers", after_help = AFTER_HELP)]
@@ -51,6 +51,12 @@ enum ImageCommand {
 
 #[derive(Debug, Args)]
 struct CreateCommandArgs {
+    #[arg(
+        long,
+        help = "Disable the default shared OpenCode auth mount for a new container"
+    )]
+    no_shared_auth: bool,
+
     #[arg(value_name = "NAME_OR_MOUNT", num_args = 0..)]
     args: Vec<String>,
 }
@@ -75,6 +81,7 @@ pub(crate) struct ContainerTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CreateContainerArgs {
     pub(crate) name: Option<String>,
+    pub(crate) no_shared_auth: bool,
     pub(crate) mounts: Vec<MountSpec>,
 }
 
@@ -108,8 +115,14 @@ where
         ScopeCommand::Agent(agent) => match agent.command {
             AgentCommand::Precheck => Ok(CliCommand::AgentPrecheck),
             AgentCommand::List => Ok(CliCommand::AgentList),
-            AgentCommand::New(args) => Ok(CliCommand::AgentNew(parse_create_args(&args.args)?)),
-            AgentCommand::Start(args) => Ok(CliCommand::AgentStart(parse_create_args(&args.args)?)),
+            AgentCommand::New(args) => Ok(CliCommand::AgentNew(parse_create_args(
+                &args.args,
+                args.no_shared_auth,
+            )?)),
+            AgentCommand::Start(args) => Ok(CliCommand::AgentStart(parse_create_args(
+                &args.args,
+                args.no_shared_auth,
+            )?)),
             AgentCommand::Stop(args) => Ok(CliCommand::AgentStop(parse_target_args(args.name)?)),
             AgentCommand::Rm(args) => Ok(CliCommand::AgentRemove(parse_target_args(args.name)?)),
             AgentCommand::Attach(args) => {
@@ -167,10 +180,14 @@ fn parse_target_args(name: Option<String>) -> AppResult<ContainerTarget> {
     })
 }
 
-pub(crate) fn parse_create_args(args: &[String]) -> AppResult<CreateContainerArgs> {
+pub(crate) fn parse_create_args(
+    args: &[String],
+    no_shared_auth: bool,
+) -> AppResult<CreateContainerArgs> {
     if args.is_empty() {
         return Ok(CreateContainerArgs {
             name: None,
+            no_shared_auth,
             mounts: Vec::new(),
         });
     }
@@ -186,5 +203,9 @@ pub(crate) fn parse_create_args(args: &[String]) -> AppResult<CreateContainerArg
         .map(|arg| parse_mount_spec(arg))
         .collect::<AppResult<Vec<_>>>()?;
 
-    Ok(CreateContainerArgs { name, mounts })
+    Ok(CreateContainerArgs {
+        name,
+        no_shared_auth,
+        mounts,
+    })
 }

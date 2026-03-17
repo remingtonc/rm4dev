@@ -5,6 +5,11 @@ use crate::mounts::MountSpec;
 use crate::naming::{generate_container_name, is_agent_container_name};
 use crate::process::{run_and_capture, run_interactive};
 use std::ffi::OsString;
+use std::fs::{self, OpenOptions};
+use std::path::PathBuf;
+
+const HOST_AUTH_PATH: &str = ".cache/rm4dev/opencode-auth.json";
+const CONTAINER_AUTH_PATH: &str = "/root/.local/share/opencode/auth.json";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartPlan {
@@ -37,7 +42,12 @@ pub(crate) fn create_container(args: CreateContainerArgs) -> AppResult<()> {
     ensure_runtime_image(&runtime_image)?;
     let name = args.name.unwrap_or_else(generate_container_name);
     ensure_container_does_not_exist(&name)?;
-    let podman_args = build_podman_run_args(&name, &args.mounts, &runtime_image.image)?;
+    let podman_args = build_podman_run_args(
+        &name,
+        args.no_shared_auth,
+        &args.mounts,
+        &runtime_image.image,
+    )?;
     run_interactive("podman", podman_args)
 }
 
@@ -210,9 +220,9 @@ fn ensure_container_does_not_exist(name: &str) -> AppResult<()> {
 pub(crate) fn plan_start(existing: Vec<String>, args: CreateContainerArgs) -> AppResult<StartPlan> {
     if let Some(name) = args.name.clone() {
         if existing.iter().any(|existing_name| existing_name == &name) {
-            if !args.mounts.is_empty() {
+            if args.no_shared_auth || !args.mounts.is_empty() {
                 return Err(AppError::Message(format!(
-                    "container `{name}` already exists; mount specs only apply when creating a new container"
+                    "container `{name}` already exists; create-only options only apply when creating a new container"
                 )));
             }
             return Ok(StartPlan::Resume { name });
@@ -220,7 +230,7 @@ pub(crate) fn plan_start(existing: Vec<String>, args: CreateContainerArgs) -> Ap
         return Ok(StartPlan::Create(args));
     }
 
-    if !args.mounts.is_empty() {
+    if args.no_shared_auth || !args.mounts.is_empty() {
         return Ok(StartPlan::Create(args));
     }
 
@@ -255,6 +265,7 @@ fn container_state(name: &str) -> AppResult<String> {
 
 pub(crate) fn build_podman_run_args(
     name: &str,
+    no_shared_auth: bool,
     mounts: &[MountSpec],
     image: &str,
 ) -> AppResult<Vec<OsString>> {
@@ -273,6 +284,14 @@ pub(crate) fn build_podman_run_args(
         OsString::from("type=tmpfs,target=/tmp"),
     ];
 
+    if !no_shared_auth {
+        let mount = cached_auth_mount()?;
+        args.extend([
+            OsString::from("--mount"),
+            OsString::from(mount.podman_mount_arg()),
+        ]);
+    }
+
     for mount in mounts {
         args.extend([
             OsString::from("--mount"),
@@ -282,6 +301,50 @@ pub(crate) fn build_podman_run_args(
 
     args.push(OsString::from(image));
     Ok(args)
+}
+
+fn cached_auth_mount() -> AppResult<MountSpec> {
+    let host = cached_auth_host_path()?;
+    Ok(MountSpec {
+        host,
+        container: CONTAINER_AUTH_PATH.to_string(),
+    })
+}
+
+fn cached_auth_host_path() -> AppResult<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or_else(|| {
+        AppError::Message("HOME is not set; cannot resolve auth cache path".to_string())
+    })?;
+    let path = home.join(HOST_AUTH_PATH);
+    let parent = path.parent().ok_or_else(|| {
+        AppError::Message(format!(
+            "failed to resolve parent directory for `{}`",
+            path.display()
+        ))
+    })?;
+
+    fs::create_dir_all(parent).map_err(|source| AppError::Io {
+        context: format!(
+            "failed to create auth cache directory `{}`",
+            parent.display()
+        ),
+        source,
+    })?;
+
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&path)
+        .map_err(|source| AppError::Io {
+            context: format!("failed to initialize auth cache file `{}`", path.display()),
+            source,
+        })?;
+
+    fs::canonicalize(&path).map_err(|source| AppError::Io {
+        context: format!("failed to resolve auth cache file `{}`", path.display()),
+        source,
+    })
 }
 
 pub(crate) fn cpu_quota() -> usize {
