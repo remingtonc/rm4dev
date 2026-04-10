@@ -7,12 +7,12 @@ FROM quay.io/podman/stable:latest
 USER 0
 # We will use nix for user package management.
 RUN dnf -y update \
-    && dnf -y install nix man-pages --exclude nix-daemon \
+    && dnf -y install nix man-pages procps --exclude nix-daemon \
     && dnf clean all \
     && rm -rf /var/cache /var/log/dnf* /var/log/hawkey.log /var/log/yum.*
 COPY src/nix /var/rm4dev/nix
-RUN cd /var/rm4dev/nix \
-    && nix --extra-experimental-features "nix-command flakes" profile add .#devTools
+RUN --mount=id=rm4dev-nix,target=/nix \
+    nix --extra-experimental-features "nix-command flakes" profile add /var/rm4dev/nix#devTools
 # Still use rustup for Rust management.
 RUN /bin/bash -lc 'rustup default stable'
 # Still want a nice entrypoint script for simple modification and usage.
