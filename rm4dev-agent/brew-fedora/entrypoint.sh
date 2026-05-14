@@ -5,6 +5,7 @@
 set -e
 
 SESSION=rm4dev-agent
+WEB_PORT=${RM4DEV_OPENCODE_WEB_PORT:-}
 CONFIG_DIR=/home/podman/.config
 CONFIG_BACKUP_DIR=/home/podman/.config.bak
 CONFIG_SENTINEL_FILE="$CONFIG_DIR/.rm4dev-initialized"
@@ -27,7 +28,14 @@ fi
 
 # Create session if it doesn't exist
 if ! tmux has-session -t "$SESSION" 2>/dev/null; then
-    tmux new-session -d -s "$SESSION" "opencode"
+    if [[ -n "$WEB_PORT" ]]; then
+        tmux new-session -d -s "$SESSION" -n web "opencode web --hostname 0.0.0.0 --port $WEB_PORT"
+        tmux split-window -t "$SESSION":0 -h "opencode attach http://127.0.0.1:$WEB_PORT"
+        tmux select-layout -t "$SESSION":0 even-horizontal
+        tmux select-pane -t "$SESSION":0.1
+    else
+        tmux new-session -d -s "$SESSION" "opencode"
+    fi
 fi
 
 # Attach to the session

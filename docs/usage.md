@@ -81,6 +81,14 @@ Disable it for a new container with:
 rm4dev agent new --no-shared-auth demo
 ```
 
+## Web interface
+
+New containers publish OpenCode web on a static host port starting at `35080`.
+
+- the chosen port is stored in the container config
+- the port is published on `127.0.0.1`
+- the container starts `opencode web` in one tmux pane and `opencode attach` in another
+
 ## Entering a running container
 
 `agent enter` opens `/bin/bash -l` inside a running container by default.

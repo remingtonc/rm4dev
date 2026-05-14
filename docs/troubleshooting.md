@@ -38,6 +38,11 @@ Use `rm4dev agent list` to see the available names and statuses.
 - if you do not want host auth persistence, recreate the container with `--no-shared-auth`
 - if the auth file becomes corrupted, fix or remove `~/.cache/rm4dev/opencode-auth.json` and create a new container
 
+## Web port conflicts
+
+- new containers start at host port `35080` and scan upward for the first free port
+- if a launch fails because a port is unavailable, stop the conflicting process or remove the older `rm4dev` container that owns that port
+
 ## `agent enter` says the container is not running
 
 `agent enter` only works for running containers. Start or resume the container first:

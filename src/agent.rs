@@ -7,14 +7,19 @@ use crate::image::{ensure_runtime_image, runtime_image};
 use crate::mounts::MountSpec;
 use crate::naming::{generate_container_name, is_agent_container_name};
 use crate::process::{run_and_capture, run_interactive};
+use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
+use std::net::TcpListener;
 use std::path::PathBuf;
 
 const HOST_AUTH_PATH: &str = ".cache/rm4dev/opencode-auth.json";
 const CONTAINER_AUTH_PATH: &str = "/root/.local/share/opencode/auth.json";
+const CONTAINER_WEB_PORT_ENV: &str = "RM4DEV_OPENCODE_WEB_PORT";
+const CONTAINER_WEB_PORT_LABEL: &str = "org.rm4dev.opencode.web-port";
 const ENTER_SHELL_ENV: &str = "RM4DEV_ENTER_SHELL";
+const WEB_PORT_START: u16 = 35080;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum StartPlan {
@@ -47,11 +52,13 @@ pub(crate) fn create_container(args: CreateContainerArgs) -> AppResult<()> {
     ensure_runtime_image(&runtime_image)?;
     let name = args.name.unwrap_or_else(generate_container_name);
     ensure_container_does_not_exist(&name)?;
+    let web_port = allocate_web_port()?;
     let podman_args = build_podman_run_args(
         &name,
         args.no_shared_auth,
         &args.mounts,
         &runtime_image.image,
+        web_port,
     )?;
     run_interactive("podman", podman_args)
 }
@@ -280,11 +287,98 @@ fn container_state(name: &str) -> AppResult<String> {
     Ok(output.trim().to_string())
 }
 
+fn allocate_web_port() -> AppResult<u16> {
+    let reserved_ports = reserved_web_ports()?;
+    pick_web_port(&reserved_ports, port_is_available)
+}
+
+pub(crate) fn pick_web_port<F>(reserved_ports: &BTreeSet<u16>, is_available: F) -> AppResult<u16>
+where
+    F: Fn(u16) -> bool,
+{
+    for port in WEB_PORT_START..=u16::MAX {
+        if reserved_ports.contains(&port) {
+            continue;
+        }
+
+        if is_available(port) {
+            return Ok(port);
+        }
+    }
+
+    Err(AppError::Message(
+        "no free OpenCode web ports are available starting at 35080".to_string(),
+    ))
+}
+
+fn reserved_web_ports() -> AppResult<BTreeSet<u16>> {
+    let mut ports = BTreeSet::new();
+
+    for name in list_agent_container_names()? {
+        ports.extend(container_web_ports(&name)?);
+    }
+
+    Ok(ports)
+}
+
+fn container_web_ports(name: &str) -> AppResult<BTreeSet<u16>> {
+    let mut ports = BTreeSet::new();
+
+    if let Some(port) = container_web_port_label(name)? {
+        ports.insert(port);
+    }
+
+    ports.extend(container_host_ports(name)?);
+    Ok(ports)
+}
+
+fn container_web_port_label(name: &str) -> AppResult<Option<u16>> {
+    let format = format!(
+        "{{with index .Config.Labels \"{}\"}}{{.}}{{end}}",
+        CONTAINER_WEB_PORT_LABEL
+    );
+    let output = run_and_capture("podman", ["inspect", "--format", format.as_str(), name])?;
+    let value = output.trim();
+
+    if value.is_empty() {
+        return Ok(None);
+    }
+
+    let port = value.parse::<u16>().map_err(|_| {
+        AppError::Message(format!(
+            "container `{name}` has an invalid OpenCode web port label `{value}`"
+        ))
+    })?;
+    Ok(Some(port))
+}
+
+fn container_host_ports(name: &str) -> AppResult<BTreeSet<u16>> {
+    let output = run_and_capture(
+        "podman",
+        [
+            "inspect",
+            "--format",
+            "{{range $port, $bindings := .HostConfig.PortBindings}}{{range $bindings}}{{.HostPort}} {{end}}{{end}}",
+            name,
+        ],
+    )?;
+
+    Ok(output
+        .split_whitespace()
+        .filter_map(|value| value.parse::<u16>().ok())
+        .collect())
+}
+
+fn port_is_available(port: u16) -> bool {
+    TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_ok()
+}
+
 pub(crate) fn build_podman_run_args(
     name: &str,
     no_shared_auth: bool,
     mounts: &[MountSpec],
     image: &str,
+    web_port: u16,
 ) -> AppResult<Vec<OsString>> {
     let cpus = cpu_quota();
 
@@ -301,6 +395,12 @@ pub(crate) fn build_podman_run_args(
         OsString::from("type=tmpfs,target=/tmp"),
         OsString::from("--mount"),
         OsString::from("type=tmpfs,target=/run"),
+        OsString::from("--label"),
+        OsString::from(format!("{}={web_port}", CONTAINER_WEB_PORT_LABEL)),
+        OsString::from("--env"),
+        OsString::from(format!("{}={web_port}", CONTAINER_WEB_PORT_ENV)),
+        OsString::from("--publish"),
+        OsString::from(format!("127.0.0.1:{web_port}:{web_port}")),
     ];
 
     if !no_shared_auth {

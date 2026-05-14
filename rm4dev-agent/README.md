@@ -17,4 +17,4 @@ This directory holds the container image definitions used by `rm4dev`.
 
 ## Runtime expectations
 
-The images are designed for trusted local development workflows with nested Podman use and a tmux-based entrypoint that launches OpenCode automatically.
+The images are designed for trusted local development workflows with nested Podman use and a tmux-based entrypoint that launches OpenCode in an attached terminal pane plus an OpenCode web pane.

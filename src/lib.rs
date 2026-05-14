@@ -62,6 +62,7 @@ mod tests {
     use super::mounts::MountSpec;
     use super::naming::normalize_container_name;
     use super::process::render_os_args;
+    use std::collections::BTreeSet;
 
     fn fixture_mount(path: &std::path::Path) -> MountSpec {
         MountSpec {
@@ -289,12 +290,26 @@ mod tests {
     fn build_run_args_contains_required_flags() {
         let mount = fixture_mount(std::path::Path::new("/tmp"));
         let args =
-            build_podman_run_args("rm4dev-agent-alpha", false, &[mount], DEFAULT_IMAGE).unwrap();
+            build_podman_run_args("rm4dev-agent-alpha", false, &[mount], DEFAULT_IMAGE, 35080)
+                .unwrap();
         let rendered = render_os_args(&args);
 
         assert!(rendered.starts_with(&["run".to_string(), "--interactive".to_string()]));
         assert!(rendered.contains(&"--mount".to_string()));
+        assert!(rendered.contains(&"--label".to_string()));
+        assert!(rendered.contains(&"--env".to_string()));
+        assert!(rendered.contains(&"--publish".to_string()));
         assert_eq!(rendered.last().map(String::as_str), Some(DEFAULT_IMAGE));
+    }
+
+    #[test]
+    fn picks_first_available_web_port() {
+        let mut reserved = BTreeSet::new();
+        reserved.insert(35080);
+        reserved.insert(35081);
+
+        let port = super::agent::pick_web_port(&reserved, |candidate| candidate == 35082).unwrap();
+        assert_eq!(port, 35082);
     }
 
     #[test]
