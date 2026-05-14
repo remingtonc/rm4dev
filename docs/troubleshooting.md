@@ -50,6 +50,7 @@ Use `rm4dev agent list` to see the available names and statuses.
 ## `agent attach` does not open a browser
 
 - confirm the container has a web port in `rm4dev agent list`
+- confirm the container password in `rm4dev agent list` matches the container name suffix
 - make sure the host has a desktop opener such as `xdg-open`, `gio open`, `sensible-browser`, or `open`
 - use `rm4dev agent attach --no-web demo` to force the terminal UI
 

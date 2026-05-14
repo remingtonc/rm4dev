@@ -112,9 +112,9 @@ New containers publish OpenCode web on a static host port starting at `35080`.
 
 - the chosen port is stored in the container config
 - the port is published on `127.0.0.1`
-- the container starts `opencode web` in one tmux pane and `opencode attach` in another
-- `rm4dev agent list` shows the web port in its output
-- each web-enabled container has its own OpenCode server password
+- the container starts `opencode web` in a `web` tmux window and `opencode attach` in a `tui` tmux window
+- `rm4dev agent list` shows the web port and password in its output
+- each web-enabled container uses the container name suffix as its OpenCode server password
 - `agent attach` opens `http://127.0.0.1:<port>` in the host browser when a web port is available
 - `agent attach --no-web` always uses the TUI attach
 

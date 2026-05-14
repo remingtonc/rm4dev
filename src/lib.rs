@@ -374,7 +374,7 @@ mod tests {
             DEFAULT_IMAGE,
             Some(&WebSettings {
                 port: 35080,
-                password: "secret".to_string(),
+                password: "alpha".to_string(),
             }),
         )
         .unwrap();
@@ -385,7 +385,7 @@ mod tests {
         assert!(rendered.contains(&"--label".to_string()));
         assert!(rendered.contains(&"--env".to_string()));
         assert!(rendered.contains(&"--publish".to_string()));
-        assert!(rendered.contains(&"OPENCODE_SERVER_PASSWORD=secret".to_string()));
+        assert!(rendered.contains(&"OPENCODE_SERVER_PASSWORD=alpha".to_string()));
         assert_eq!(rendered.last().map(String::as_str), Some(DEFAULT_IMAGE));
     }
 
@@ -413,9 +413,11 @@ mod tests {
     }
 
     #[test]
-    fn generated_web_password_is_ascii() {
-        let password = super::agent::generate_web_password().unwrap();
-        assert!(password.is_ascii());
+    fn web_password_is_derived_from_container_name() {
+        assert_eq!(
+            super::agent::container_web_password("rm4dev-agent-alpha"),
+            "alpha"
+        );
     }
 
     #[test]

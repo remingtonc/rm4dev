@@ -83,7 +83,7 @@ rm4dev image ensure [image]
 - `start` treats `--no-shared-auth` and mount arguments as create-only signals when no matching container already exists.
 - `start` treats `--no-web` as a create-only signal when no matching container already exists.
 - `list` shows all discovered `rm4dev-agent-*` containers, including stopped containers, with image and status columns.
-- `list` also shows the published OpenCode web port when one is configured.
+- `list` also shows the published OpenCode web port and web password when one is configured.
 - `attach` opens the container's web URL in the host browser when the container has a published web port.
 - `attach --no-web` forces the normal TUI attach.
 - OpenCode web uses a per-container password.
@@ -93,7 +93,8 @@ rm4dev image ensure [image]
 - New containers run `podman run --privileged` and mount tmpfs at `/tmp` and `/run`.
 - Shared OpenCode auth is enabled by default. `rm4dev` creates `~/.cache/rm4dev/opencode-auth.json` on demand and bind-mounts it into `/root/.local/share/opencode/auth.json`.
 - Each new agent container gets a static OpenCode web port starting at `35080`, published on `127.0.0.1` and recorded in the container config.
-- Each web-enabled container also gets a private `OPENCODE_SERVER_PASSWORD`.
+- Each web-enabled container also gets a private `OPENCODE_SERVER_PASSWORD` derived from the container name suffix.
+- The container starts with two named tmux windows: `web` and `tui`.
 - Additional mounts are bind mounts. Host paths are canonicalized and must already exist.
 - Embedded image builds unpack into `XDG_CACHE_HOME/rm4dev/images/nix-fedora` or `~/.cache/rm4dev/images/nix-fedora`.
 

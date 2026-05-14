@@ -5,13 +5,12 @@ use crate::cli::{ContainerTarget, CreateContainerArgs};
 use crate::error::{AppError, AppResult};
 use crate::image::{ensure_runtime_image, runtime_image};
 use crate::mounts::MountSpec;
-use crate::naming::{generate_container_name, is_agent_container_name};
+use crate::naming::{CONTAINER_PREFIX, generate_container_name, is_agent_container_name};
 use crate::process::{run_and_capture, run_interactive};
 use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsString;
-use std::fs::{self, File, OpenOptions};
-use std::io::Read;
+use std::fs::{self, OpenOptions};
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -44,6 +43,7 @@ struct ListedContainer {
     image: String,
     status: String,
     web_port: Option<u16>,
+    web_password: Option<String>,
 }
 
 pub(crate) fn precheck() -> AppResult<()> {
@@ -69,7 +69,7 @@ pub(crate) fn create_container(args: CreateContainerArgs) -> AppResult<()> {
     } else {
         Some(WebSettings {
             port: allocate_web_port()?,
-            password: generate_web_password()?,
+            password: container_web_password(&name),
         })
     };
     let podman_args = build_podman_run_args(
@@ -163,7 +163,7 @@ fn load_agent_containers() -> AppResult<Vec<ListedContainer>> {
         .filter(|container| is_agent_container_name(&container.name))
     {
         let web_port = container_web_port_for_container(&container.name)?;
-        containers.push(container.with_web_port(web_port));
+        containers.push(container.with_web(web_port));
     }
 
     containers.sort_by(|left, right| left.name.cmp(&right.name));
@@ -193,35 +193,54 @@ fn print_container_table(containers: &[ListedContainer]) {
         .max()
         .unwrap_or(4)
         .max(4);
+    let password_width = containers
+        .iter()
+        .map(|container| {
+            container
+                .web_password
+                .as_ref()
+                .map_or(8, |password| password.len())
+        })
+        .max()
+        .unwrap_or(8)
+        .max(8);
 
     println!(
-        "{:<name_width$}  {:<image_width$}  {:<port_width$}  STATUS",
+        "{:<name_width$}  {:<image_width$}  {:<port_width$}  {:<password_width$}  STATUS",
         "NAME",
         "IMAGE",
         "PORT",
+        "PASSWORD",
         name_width = name_width,
         image_width = image_width,
         port_width = port_width,
+        password_width = password_width,
     );
     for container in containers {
         println!(
-            "{:<name_width$}  {:<image_width$}  {:<port_width$}  {}",
+            "{:<name_width$}  {:<image_width$}  {:<port_width$}  {:<password_width$}  {}",
             container.name,
             container.image,
             container
                 .web_port
                 .map_or_else(|| "-".to_string(), |port| port.to_string()),
+            container
+                .web_password
+                .clone()
+                .unwrap_or_else(|| "-".to_string()),
             container.status,
             name_width = name_width,
             image_width = image_width,
             port_width = port_width,
+            password_width = password_width,
         );
     }
 }
 
 impl ListedContainer {
-    fn with_web_port(mut self, web_port: Option<u16>) -> Self {
+    fn with_web(mut self, web_port: Option<u16>) -> Self {
         self.web_port = web_port;
+        self.web_password = web_port.map(|_| container_web_password(&self.name));
         self
     }
 }
@@ -241,6 +260,7 @@ fn parse_listed_container_line(line: &str) -> Option<ListedContainer> {
         image,
         status,
         web_port: None,
+        web_password: None,
     })
 }
 
@@ -347,27 +367,11 @@ fn allocate_web_port() -> AppResult<u16> {
     pick_web_port(&reserved_ports, port_is_available)
 }
 
-pub(crate) fn generate_web_password() -> AppResult<String> {
-    let mut bytes = [0u8; 16];
-    File::open("/dev/urandom")
-        .and_then(|mut file| file.read_exact(&mut bytes))
-        .map_err(|source| AppError::Io {
-            context: "failed to read random bytes for OpenCode web password".to_string(),
-            source,
-        })?;
-    // Hex encoding keeps the password ASCII-only and shell-safe.
-    let password = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-
-    if password.is_empty() {
-        Err(AppError::Message(
-            "failed to generate an OpenCode web password".to_string(),
-        ))
-    } else {
-        Ok(password)
-    }
+pub(crate) fn container_web_password(container_name: &str) -> String {
+    container_name
+        .strip_prefix(CONTAINER_PREFIX)
+        .unwrap_or(container_name)
+        .to_string()
 }
 
 pub(crate) fn pick_web_port<F>(reserved_ports: &BTreeSet<u16>, is_available: F) -> AppResult<u16>
