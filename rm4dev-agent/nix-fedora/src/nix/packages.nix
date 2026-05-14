@@ -28,4 +28,9 @@
   pkgs.zstd
   pkgs.unstable.opencode
   pkgs.gcc
+  pkgs.jdk17_headless
+  pkgs.cmake
+  pkgs.ninja
+  pkgs.btop
+  pkgs.httpie
 ]
