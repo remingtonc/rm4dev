@@ -11,10 +11,22 @@ Create a new agent container:
 rm4dev agent new demo
 ```
 
+Disable the web interface for a new container:
+
+```text
+rm4dev agent new --no-web demo
+```
+
 Resume or create depending on what already exists:
 
 ```text
 rm4dev agent start demo
+```
+
+You can also skip web when creating a new container via `start`:
+
+```text
+rm4dev agent start --no-web demo
 ```
 
 List known agent containers:
@@ -27,6 +39,18 @@ Open a shell in a running container:
 
 ```text
 rm4dev agent enter demo
+```
+
+Open the web UI in your desktop browser for a running container:
+
+```text
+rm4dev agent attach demo
+```
+
+Force the terminal UI instead:
+
+```text
+rm4dev agent attach --no-web demo
 ```
 
 ## Naming rules
@@ -43,6 +67,7 @@ rm4dev agent enter demo
   - the requested name does not exist
   - no agent containers exist yet
   - create-only options are supplied without naming an existing container
+- `--no-web` disables OpenCode web for a newly created container
 
 If multiple agent containers already exist and you do not specify a name, `agent start`, `agent stop`, `agent rm`, `agent attach`, and `agent enter` require a target name.
 
@@ -88,6 +113,10 @@ New containers publish OpenCode web on a static host port starting at `35080`.
 - the chosen port is stored in the container config
 - the port is published on `127.0.0.1`
 - the container starts `opencode web` in one tmux pane and `opencode attach` in another
+- `rm4dev agent list` shows the web port in its output
+- each web-enabled container has its own OpenCode server password
+- `agent attach` opens `http://127.0.0.1:<port>` in the host browser when a web port is available
+- `agent attach --no-web` always uses the TUI attach
 
 ## Entering a running container
 

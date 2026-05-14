@@ -66,11 +66,11 @@ cargo install --path .
 ```text
 rm4dev agent precheck
 rm4dev agent list
-rm4dev agent new [--no-shared-auth] [name] [host_path:container_path ...]
-rm4dev agent start [--no-shared-auth] [name] [host_path:container_path ...]
+rm4dev agent new [--no-shared-auth] [--no-web] [name] [host_path:container_path ...]
+rm4dev agent start [--no-shared-auth] [--no-web] [name] [host_path:container_path ...]
 rm4dev agent stop [name]
 rm4dev agent rm [name]
-rm4dev agent attach [name]
+rm4dev agent attach [--no-web] [name]
 rm4dev agent enter [name]
 rm4dev image build [image]
 rm4dev image ensure [image]
@@ -81,13 +81,19 @@ rm4dev image ensure [image]
 - `new` always creates a new container. If no name is provided, it generates one from the current Unix timestamp.
 - `start` resumes an existing container when it can resolve one unambiguously; otherwise it creates a new container.
 - `start` treats `--no-shared-auth` and mount arguments as create-only signals when no matching container already exists.
+- `start` treats `--no-web` as a create-only signal when no matching container already exists.
 - `list` shows all discovered `rm4dev-agent-*` containers, including stopped containers, with image and status columns.
+- `list` also shows the published OpenCode web port when one is configured.
+- `attach` opens the container's web URL in the host browser when the container has a published web port.
+- `attach --no-web` forces the normal TUI attach.
+- OpenCode web uses a per-container password.
 - `enter` opens `/bin/bash -l` inside a running container by default. Override the shell path with `RM4DEV_ENTER_SHELL`.
 
 ## Host Effects
 - New containers run `podman run --privileged` and mount tmpfs at `/tmp` and `/run`.
 - Shared OpenCode auth is enabled by default. `rm4dev` creates `~/.cache/rm4dev/opencode-auth.json` on demand and bind-mounts it into `/root/.local/share/opencode/auth.json`.
 - Each new agent container gets a static OpenCode web port starting at `35080`, published on `127.0.0.1` and recorded in the container config.
+- Each web-enabled container also gets a private `OPENCODE_SERVER_PASSWORD`.
 - Additional mounts are bind mounts. Host paths are canonicalized and must already exist.
 - Embedded image builds unpack into `XDG_CACHE_HOME/rm4dev/images/nix-fedora` or `~/.cache/rm4dev/images/nix-fedora`.
 

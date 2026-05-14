@@ -10,14 +10,19 @@ use crate::process::{run_and_capture, run_interactive};
 use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsString;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
+use std::io::Read;
 use std::net::TcpListener;
+use std::net::TcpStream;
 use std::path::PathBuf;
+use std::process::Command;
+use std::time::{Duration, Instant};
 
 const HOST_AUTH_PATH: &str = ".cache/rm4dev/opencode-auth.json";
 const CONTAINER_AUTH_PATH: &str = "/root/.local/share/opencode/auth.json";
 const CONTAINER_WEB_PORT_ENV: &str = "RM4DEV_OPENCODE_WEB_PORT";
 const CONTAINER_WEB_PORT_LABEL: &str = "org.rm4dev.opencode.web-port";
+const CONTAINER_WEB_PASSWORD_ENV: &str = "OPENCODE_SERVER_PASSWORD";
 const ENTER_SHELL_ENV: &str = "RM4DEV_ENTER_SHELL";
 const WEB_PORT_START: u16 = 35080;
 
@@ -28,10 +33,17 @@ pub(crate) enum StartPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WebSettings {
+    pub(crate) port: u16,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ListedContainer {
     name: String,
     image: String,
     status: String,
+    web_port: Option<u16>,
 }
 
 pub(crate) fn precheck() -> AppResult<()> {
@@ -52,13 +64,20 @@ pub(crate) fn create_container(args: CreateContainerArgs) -> AppResult<()> {
     ensure_runtime_image(&runtime_image)?;
     let name = args.name.unwrap_or_else(generate_container_name);
     ensure_container_does_not_exist(&name)?;
-    let web_port = allocate_web_port()?;
+    let web = if args.no_web {
+        None
+    } else {
+        Some(WebSettings {
+            port: allocate_web_port()?,
+            password: generate_web_password()?,
+        })
+    };
     let podman_args = build_podman_run_args(
         &name,
         args.no_shared_auth,
         &args.mounts,
         &runtime_image.image,
-        web_port,
+        web.as_ref(),
     )?;
     run_interactive("podman", podman_args)
 }
@@ -82,8 +101,16 @@ pub(crate) fn remove_container(target: ContainerTarget) -> AppResult<()> {
 }
 
 pub(crate) fn attach_container(target: ContainerTarget) -> AppResult<()> {
+    let no_web = target.no_web;
     let name = resolve_existing_container(target)?;
-    run_interactive("podman", vec!["attach".into(), name.into()])
+    if no_web {
+        run_interactive("podman", vec!["attach".into(), name.into()])
+    } else if let Some(web_port) = container_web_port_for_container(&name)? {
+        wait_for_tcp_port(web_port, Duration::from_secs(30))?;
+        open_url_in_browser(&format!("http://127.0.0.1:{web_port}"))
+    } else {
+        run_interactive("podman", vec!["attach".into(), name.into()])
+    }
 }
 
 pub(crate) fn enter_container(target: ContainerTarget) -> AppResult<()> {
@@ -129,11 +156,15 @@ fn load_agent_containers() -> AppResult<Vec<ListedContainer>> {
             "{{.Names}}\t{{.Image}}\t{{.Status}}",
         ],
     )?;
-    let mut containers = output
+    let mut containers = Vec::new();
+    for container in output
         .lines()
         .filter_map(parse_listed_container_line)
         .filter(|container| is_agent_container_name(&container.name))
-        .collect::<Vec<_>>();
+    {
+        let web_port = container_web_port_for_container(&container.name)?;
+        containers.push(container.with_web_port(web_port));
+    }
 
     containers.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(containers)
@@ -156,23 +187,42 @@ fn print_container_table(containers: &[ListedContainer]) {
         .max()
         .unwrap_or(5)
         .max(5);
+    let port_width = containers
+        .iter()
+        .map(|container| container.web_port.map_or(4, |port| port.to_string().len()))
+        .max()
+        .unwrap_or(4)
+        .max(4);
 
     println!(
-        "{:<name_width$}  {:<image_width$}  STATUS",
+        "{:<name_width$}  {:<image_width$}  {:<port_width$}  STATUS",
         "NAME",
         "IMAGE",
+        "PORT",
         name_width = name_width,
-        image_width = image_width
+        image_width = image_width,
+        port_width = port_width,
     );
     for container in containers {
         println!(
-            "{:<name_width$}  {:<image_width$}  {}",
+            "{:<name_width$}  {:<image_width$}  {:<port_width$}  {}",
             container.name,
             container.image,
+            container
+                .web_port
+                .map_or_else(|| "-".to_string(), |port| port.to_string()),
             container.status,
             name_width = name_width,
-            image_width = image_width
+            image_width = image_width,
+            port_width = port_width,
         );
+    }
+}
+
+impl ListedContainer {
+    fn with_web_port(mut self, web_port: Option<u16>) -> Self {
+        self.web_port = web_port;
+        self
     }
 }
 
@@ -190,7 +240,12 @@ fn parse_listed_container_line(line: &str) -> Option<ListedContainer> {
         name,
         image,
         status,
+        web_port: None,
     })
+}
+
+fn container_web_port_for_container(name: &str) -> AppResult<Option<u16>> {
+    container_web_port_label(name)
 }
 
 fn resolve_existing_container(target: ContainerTarget) -> AppResult<String> {
@@ -244,7 +299,7 @@ fn ensure_container_does_not_exist(name: &str) -> AppResult<()> {
 pub(crate) fn plan_start(existing: Vec<String>, args: CreateContainerArgs) -> AppResult<StartPlan> {
     if let Some(name) = args.name.clone() {
         if existing.iter().any(|existing_name| existing_name == &name) {
-            if args.no_shared_auth || !args.mounts.is_empty() {
+            if args.no_shared_auth || args.no_web || !args.mounts.is_empty() {
                 return Err(AppError::Message(format!(
                     "container `{name}` already exists; create-only options only apply when creating a new container"
                 )));
@@ -254,7 +309,7 @@ pub(crate) fn plan_start(existing: Vec<String>, args: CreateContainerArgs) -> Ap
         return Ok(StartPlan::Create(args));
     }
 
-    if args.no_shared_auth || !args.mounts.is_empty() {
+    if args.no_shared_auth || args.no_web || !args.mounts.is_empty() {
         return Ok(StartPlan::Create(args));
     }
 
@@ -290,6 +345,29 @@ fn container_state(name: &str) -> AppResult<String> {
 fn allocate_web_port() -> AppResult<u16> {
     let reserved_ports = reserved_web_ports()?;
     pick_web_port(&reserved_ports, port_is_available)
+}
+
+pub(crate) fn generate_web_password() -> AppResult<String> {
+    let mut bytes = [0u8; 16];
+    File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(&mut bytes))
+        .map_err(|source| AppError::Io {
+            context: "failed to read random bytes for OpenCode web password".to_string(),
+            source,
+        })?;
+    // Hex encoding keeps the password ASCII-only and shell-safe.
+    let password = bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+
+    if password.is_empty() {
+        Err(AppError::Message(
+            "failed to generate an OpenCode web password".to_string(),
+        ))
+    } else {
+        Ok(password)
+    }
 }
 
 pub(crate) fn pick_web_port<F>(reserved_ports: &BTreeSet<u16>, is_available: F) -> AppResult<u16>
@@ -334,7 +412,7 @@ fn container_web_ports(name: &str) -> AppResult<BTreeSet<u16>> {
 
 fn container_web_port_label(name: &str) -> AppResult<Option<u16>> {
     let format = format!(
-        "{{with index .Config.Labels \"{}\"}}{{.}}{{end}}",
+        "{{{{with index .Config.Labels \"{}\"}}}}{{{{.}}}}{{{{end}}}}",
         CONTAINER_WEB_PORT_LABEL
     );
     let output = run_and_capture("podman", ["inspect", "--format", format.as_str(), name])?;
@@ -373,12 +451,59 @@ fn port_is_available(port: u16) -> bool {
     TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).is_ok()
 }
 
+fn wait_for_tcp_port(port: u16, timeout: Duration) -> AppResult<()> {
+    let deadline = Instant::now() + timeout;
+    let addr = (std::net::Ipv4Addr::LOCALHOST, port);
+
+    loop {
+        if TcpStream::connect(addr).is_ok() {
+            return Ok(());
+        }
+
+        if Instant::now() >= deadline {
+            return Err(AppError::Message(format!(
+                "OpenCode web did not start listening on port {port} within {}s",
+                timeout.as_secs()
+            )));
+        }
+
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+fn open_url_in_browser(url: &str) -> AppResult<()> {
+    let candidates: &[(&str, &[&str])] = &[
+        ("xdg-open", &[url] as &[&str]),
+        ("gio", &["open", url] as &[&str]),
+        ("sensible-browser", &[url] as &[&str]),
+        ("open", &[url] as &[&str]),
+    ];
+
+    for (program, args) in candidates {
+        match Command::new(program).args(*args).status() {
+            Ok(status) if status.success() => return Ok(()),
+            Ok(_) => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(source) => {
+                return Err(AppError::Io {
+                    context: format!("failed to execute `{program}`"),
+                    source,
+                });
+            }
+        }
+    }
+
+    Err(AppError::Message(format!(
+        "could not open browser for `{url}`; tried xdg-open, gio open, sensible-browser, and open"
+    )))
+}
+
 pub(crate) fn build_podman_run_args(
     name: &str,
     no_shared_auth: bool,
     mounts: &[MountSpec],
     image: &str,
-    web_port: u16,
+    web: Option<&WebSettings>,
 ) -> AppResult<Vec<OsString>> {
     let cpus = cpu_quota();
 
@@ -395,12 +520,6 @@ pub(crate) fn build_podman_run_args(
         OsString::from("type=tmpfs,target=/tmp"),
         OsString::from("--mount"),
         OsString::from("type=tmpfs,target=/run"),
-        OsString::from("--label"),
-        OsString::from(format!("{}={web_port}", CONTAINER_WEB_PORT_LABEL)),
-        OsString::from("--env"),
-        OsString::from(format!("{}={web_port}", CONTAINER_WEB_PORT_ENV)),
-        OsString::from("--publish"),
-        OsString::from(format!("127.0.0.1:{web_port}:{web_port}")),
     ];
 
     if !no_shared_auth {
@@ -408,6 +527,19 @@ pub(crate) fn build_podman_run_args(
         args.extend([
             OsString::from("--mount"),
             OsString::from(mount.podman_mount_arg()),
+        ]);
+    }
+
+    if let Some(web) = web {
+        args.extend([
+            OsString::from("--label"),
+            OsString::from(format!("{}={}", CONTAINER_WEB_PORT_LABEL, web.port)),
+            OsString::from("--env"),
+            OsString::from(format!("{}={}", CONTAINER_WEB_PORT_ENV, web.port)),
+            OsString::from("--env"),
+            OsString::from(format!("{}={}", CONTAINER_WEB_PASSWORD_ENV, web.password)),
+            OsString::from("--publish"),
+            OsString::from(format!("127.0.0.1:{}:{}", web.port, web.port)),
         ]);
     }
 

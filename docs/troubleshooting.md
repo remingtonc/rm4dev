@@ -43,6 +43,21 @@ Use `rm4dev agent list` to see the available names and statuses.
 - new containers start at host port `35080` and scan upward for the first free port
 - if a launch fails because a port is unavailable, stop the conflicting process or remove the older `rm4dev` container that owns that port
 
+## Web is not wanted
+
+- create the container with `--no-web` to run the terminal interface only
+
+## `agent attach` does not open a browser
+
+- confirm the container has a web port in `rm4dev agent list`
+- make sure the host has a desktop opener such as `xdg-open`, `gio open`, `sensible-browser`, or `open`
+- use `rm4dev agent attach --no-web demo` to force the terminal UI
+
+## Web login fails
+
+- recreate the container so it gets a fresh `OPENCODE_SERVER_PASSWORD`
+- if you rebuilt `rm4dev`, rebuild the bundled image too so the updated entrypoint is included
+
 ## `agent enter` says the container is not running
 
 `agent enter` only works for running containers. Start or resume the container first:

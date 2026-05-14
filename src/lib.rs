@@ -54,7 +54,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::agent::{StartPlan, build_podman_run_args, plan_start};
+    use super::agent::{StartPlan, WebSettings, build_podman_run_args, plan_start};
     use super::cli::{
         CliCommand, CreateContainerArgs, ImageCommandArgs, parse_cli, parse_create_args,
     };
@@ -101,7 +101,7 @@ mod tests {
             format!("{}:/workspace", tempdir.display()),
         ];
 
-        let parsed = parse_create_args(&args, false).unwrap();
+        let parsed = parse_create_args(&args, false, false).unwrap();
         assert_eq!(parsed.name.as_deref(), Some("rm4dev-agent-alpha"));
         assert!(!parsed.no_shared_auth);
         assert_eq!(parsed.mounts.len(), 1);
@@ -113,7 +113,7 @@ mod tests {
         let tempdir = std::env::temp_dir();
         let args = vec![format!("{}:/workspace", tempdir.display())];
 
-        let parsed = parse_create_args(&args, false).unwrap();
+        let parsed = parse_create_args(&args, false, false).unwrap();
         assert_eq!(parsed.name, None);
         assert!(!parsed.no_shared_auth);
         assert_eq!(parsed.mounts.len(), 1);
@@ -127,6 +127,7 @@ mod tests {
             CliCommand::AgentNew(CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
                 no_shared_auth: true,
+                no_web: false,
                 mounts: Vec::new(),
             })
         );
@@ -140,6 +141,33 @@ mod tests {
             CliCommand::AgentNew(CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
                 no_shared_auth: false,
+                no_web: false,
+                mounts: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
+    fn parses_attach_no_web_flag() {
+        let parsed = parse_cli(["rm4dev", "agent", "attach", "--no-web", "alpha"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::AgentAttach(super::cli::ContainerTarget {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_web: true,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_no_web_flag_for_new_container() {
+        let parsed = parse_cli(["rm4dev", "agent", "new", "--no-web", "alpha"]).unwrap();
+        assert_eq!(
+            parsed,
+            CliCommand::AgentNew(CreateContainerArgs {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: false,
+                no_web: true,
                 mounts: Vec::new(),
             })
         );
@@ -152,6 +180,7 @@ mod tests {
             CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
                 no_shared_auth: false,
+                no_web: false,
                 mounts: Vec::new(),
             },
         )
@@ -172,6 +201,7 @@ mod tests {
             CreateContainerArgs {
                 name: Some("rm4dev-agent-beta".to_string()),
                 no_shared_auth: false,
+                no_web: false,
                 mounts: Vec::new(),
             },
         )
@@ -182,6 +212,7 @@ mod tests {
             StartPlan::Create(CreateContainerArgs {
                 name: Some("rm4dev-agent-beta".to_string()),
                 no_shared_auth: false,
+                no_web: false,
                 mounts: Vec::new(),
             })
         );
@@ -195,6 +226,7 @@ mod tests {
             CreateContainerArgs {
                 name: None,
                 no_shared_auth: false,
+                no_web: false,
                 mounts: vec![mount.clone()],
             },
         )
@@ -205,6 +237,7 @@ mod tests {
             StartPlan::Create(CreateContainerArgs {
                 name: None,
                 no_shared_auth: false,
+                no_web: false,
                 mounts: vec![mount],
             })
         );
@@ -220,6 +253,7 @@ mod tests {
             CreateContainerArgs {
                 name: None,
                 no_shared_auth: false,
+                no_web: false,
                 mounts: Vec::new(),
             },
         )
@@ -236,6 +270,7 @@ mod tests {
             CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
                 no_shared_auth: false,
+                no_web: false,
                 mounts: vec![mount],
             },
         )
@@ -251,6 +286,7 @@ mod tests {
             CreateContainerArgs {
                 name: None,
                 no_shared_auth: true,
+                no_web: false,
                 mounts: Vec::new(),
             },
         )
@@ -261,6 +297,7 @@ mod tests {
             StartPlan::Create(CreateContainerArgs {
                 name: None,
                 no_shared_auth: true,
+                no_web: false,
                 mounts: Vec::new(),
             })
         );
@@ -273,12 +310,53 @@ mod tests {
             CreateContainerArgs {
                 name: Some("rm4dev-agent-alpha".to_string()),
                 no_shared_auth: true,
+                no_web: false,
                 mounts: Vec::new(),
             },
         )
         .unwrap_err();
 
         assert!(format!("{error}").contains("create-only options only apply"));
+    }
+
+    #[test]
+    fn start_rejects_no_web_for_existing_named_container() {
+        let error = plan_start(
+            vec!["rm4dev-agent-alpha".to_string()],
+            CreateContainerArgs {
+                name: Some("rm4dev-agent-alpha".to_string()),
+                no_shared_auth: false,
+                no_web: true,
+                mounts: Vec::new(),
+            },
+        )
+        .unwrap_err();
+
+        assert!(format!("{error}").contains("create-only options only apply"));
+    }
+
+    #[test]
+    fn start_uses_no_web_as_create_signal_without_name() {
+        let plan = plan_start(
+            vec!["rm4dev-agent-alpha".to_string()],
+            CreateContainerArgs {
+                name: None,
+                no_shared_auth: false,
+                no_web: true,
+                mounts: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            plan,
+            StartPlan::Create(CreateContainerArgs {
+                name: None,
+                no_shared_auth: false,
+                no_web: true,
+                mounts: Vec::new(),
+            })
+        );
     }
 
     #[test]
@@ -289,9 +367,17 @@ mod tests {
     #[test]
     fn build_run_args_contains_required_flags() {
         let mount = fixture_mount(std::path::Path::new("/tmp"));
-        let args =
-            build_podman_run_args("rm4dev-agent-alpha", false, &[mount], DEFAULT_IMAGE, 35080)
-                .unwrap();
+        let args = build_podman_run_args(
+            "rm4dev-agent-alpha",
+            false,
+            &[mount],
+            DEFAULT_IMAGE,
+            Some(&WebSettings {
+                port: 35080,
+                password: "secret".to_string(),
+            }),
+        )
+        .unwrap();
         let rendered = render_os_args(&args);
 
         assert!(rendered.starts_with(&["run".to_string(), "--interactive".to_string()]));
@@ -299,6 +385,7 @@ mod tests {
         assert!(rendered.contains(&"--label".to_string()));
         assert!(rendered.contains(&"--env".to_string()));
         assert!(rendered.contains(&"--publish".to_string()));
+        assert!(rendered.contains(&"OPENCODE_SERVER_PASSWORD=secret".to_string()));
         assert_eq!(rendered.last().map(String::as_str), Some(DEFAULT_IMAGE));
     }
 
@@ -310,6 +397,25 @@ mod tests {
 
         let port = super::agent::pick_web_port(&reserved, |candidate| candidate == 35082).unwrap();
         assert_eq!(port, 35082);
+    }
+
+    #[test]
+    fn build_run_args_omits_web_when_disabled() {
+        let mount = fixture_mount(std::path::Path::new("/tmp"));
+        let args =
+            build_podman_run_args("rm4dev-agent-alpha", false, &[mount], DEFAULT_IMAGE, None)
+                .unwrap();
+        let rendered = render_os_args(&args);
+
+        assert!(!rendered.contains(&"--publish".to_string()));
+        assert!(!rendered.contains(&"--label".to_string()));
+        assert!(!rendered.contains(&"--env".to_string()));
+    }
+
+    #[test]
+    fn generated_web_password_is_ascii() {
+        let password = super::agent::generate_web_password().unwrap();
+        assert!(password.is_ascii());
     }
 
     #[test]

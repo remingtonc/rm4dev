@@ -13,6 +13,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_IMAGE: &str = "localhost/rm4dev-agent:nix-fedora";
+const IMAGE_CONTEXT_HASH_LABEL: &str = "org.rm4dev.context-hash";
 static NIX_FEDORA_CONTEXT: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/rm4dev-agent/nix-fedora");
 const IMAGE_ENV: &str = "RM4DEV_IMAGE";
 
@@ -59,7 +60,7 @@ pub(crate) fn image_build(args: ImageCommandArgs) -> AppResult<()> {
 
 pub(crate) fn image_ensure(args: ImageCommandArgs) -> AppResult<()> {
     let image = resolve_image_ref(args.image.as_deref());
-    if image_exists(&image)? {
+    if image_context_matches(&image)? {
         println!("image already present: {image}");
         return Ok(());
     }
@@ -70,11 +71,21 @@ pub(crate) fn image_ensure(args: ImageCommandArgs) -> AppResult<()> {
 }
 
 fn ensure_image_present(image: &str) -> AppResult<()> {
-    if image_exists(image)? {
+    if image_context_matches(image)? {
         return Ok(());
     }
 
     build_embedded_image(image)
+}
+
+fn image_context_matches(image: &str) -> AppResult<bool> {
+    if !image_exists(image)? {
+        return Ok(false);
+    }
+
+    Ok(image_context_hash(image)?
+        .as_deref()
+        .is_some_and(|value| value == embedded_context_hash()))
 }
 
 fn image_exists(image: &str) -> AppResult<bool> {
@@ -101,9 +112,40 @@ fn build_embedded_image(image: &str) -> AppResult<()> {
             "build".into(),
             "--tag".into(),
             image.into(),
+            "--label".into(),
+            format!("{}={}", IMAGE_CONTEXT_HASH_LABEL, embedded_context_hash()).into(),
             build_context.into_os_string(),
         ],
     )
+}
+
+fn image_context_hash(image: &str) -> AppResult<Option<String>> {
+    let format = format!(
+        "{{{{index .Config.Labels \"{}\"}}}}",
+        IMAGE_CONTEXT_HASH_LABEL
+    );
+    let output = run_for_output(
+        "podman",
+        ["image", "inspect", "--format", format.as_str(), image],
+    )?;
+
+    if !output.status.success() {
+        return Err(AppError::CommandFailed {
+            program: "podman".to_string(),
+            args: render_os_args(&[
+                "image".into(),
+                "inspect".into(),
+                "--format".into(),
+                format.into(),
+                image.into(),
+            ]),
+            status: output.status,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok((!value.is_empty()).then_some(value))
 }
 
 fn ensure_embedded_build_context() -> AppResult<PathBuf> {

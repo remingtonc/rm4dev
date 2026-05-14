@@ -33,6 +33,8 @@ At runtime, `src/image.rs` hashes that embedded directory, writes it into a cach
 - `agent start` uses a decision plan to either resume an existing container or create a new one
 - newly created containers receive privileged Podman settings, tmpfs mounts, and optional auth or user-supplied bind mounts
 - newly created containers reserve a static OpenCode web port starting at `35080`, publish it on `127.0.0.1`, and record it in a container label/env pair
+- web-enabled containers also receive a per-container `OPENCODE_SERVER_PASSWORD`
+- `attach` opens the published OpenCode web session in a browser when a web port exists, unless `--no-web` is given
 - image auto-build happens only for the default image path and only when `RM4DEV_IMAGE` is not set
 
 ## Image variants in this repository
