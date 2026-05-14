@@ -160,6 +160,14 @@ mod tests {
     }
 
     #[test]
+    fn rejects_no_web_flag_for_non_attach_targets() {
+        for command in ["stop", "rm", "enter"] {
+            let error = parse_cli(["rm4dev", "agent", command, "--no-web", "alpha"]).unwrap_err();
+            assert!(format!("{error}").contains("unexpected argument '--no-web'"));
+        }
+    }
+
+    #[test]
     fn parses_no_web_flag_for_new_container() {
         let parsed = parse_cli(["rm4dev", "agent", "new", "--no-web", "alpha"]).unwrap();
         assert_eq!(

@@ -36,7 +36,7 @@ enum AgentCommand {
     Start(CreateCommandArgs),
     Stop(TargetCommandArgs),
     Rm(TargetCommandArgs),
-    Attach(TargetCommandArgs),
+    Attach(AttachCommandArgs),
     Enter(TargetCommandArgs),
 }
 
@@ -72,6 +72,12 @@ struct CreateCommandArgs {
 
 #[derive(Debug, Args)]
 struct TargetCommandArgs {
+    #[arg(value_name = "NAME")]
+    name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct AttachCommandArgs {
     #[arg(
         long,
         help = "Force TUI attach instead of opening the container's OpenCode web interface"
