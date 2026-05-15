@@ -457,10 +457,10 @@ fn port_is_available(port: u16) -> bool {
 
 fn wait_for_tcp_port(port: u16, timeout: Duration) -> AppResult<()> {
     let deadline = Instant::now() + timeout;
-    let addr = (std::net::Ipv4Addr::LOCALHOST, port);
+    let addr = std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, port));
 
     loop {
-        if TcpStream::connect(addr).is_ok() {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
             return Ok(());
         }
 
