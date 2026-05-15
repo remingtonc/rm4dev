@@ -38,10 +38,6 @@ pub(crate) fn is_valid_container_name(name: &str) -> bool {
     chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
 }
 
-pub(crate) fn is_agent_container_name(name: &str) -> bool {
-    name.starts_with(CONTAINER_PREFIX)
-}
-
 pub(crate) fn generate_container_name() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)

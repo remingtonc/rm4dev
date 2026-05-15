@@ -7,7 +7,7 @@ use crate::naming::normalize_container_name;
 use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
 use std::ffi::OsString;
 
-const AFTER_HELP: &str = "Names are normalized to the form rm4dev-agent-<word>.\nstart resumes an existing container when it can resolve one.\nstart creates a new container when no existing match is chosen or create-only options are supplied.\nShared auth is enabled by default and binds ~/.cache/rm4dev/opencode-auth.json into /root/.local/share/opencode/auth.json in new containers; use --no-shared-auth to disable it for a new container.\nConfigure the runtime image with RM4DEV_IMAGE; default is localhost/rm4dev-agent:nix-fedora.\nimage build and image ensure accept an optional custom image reference.";
+const AFTER_HELP: &str = "Names are normalized to the form rm4dev-agent-<word>.\nstart resumes an existing container when it can resolve one.\nstart creates a new container when no existing match is chosen or create-only options are supplied.\nShared auth is enabled by default and binds ~/.cache/rm4dev/opencode-auth.json into /root/.local/share/opencode/auth.json in new containers; use --no-shared-auth to disable it for a new container.\nOpenCode web is enabled by default for new containers; use --no-web to skip publishing a web port and run the TUI only.\nattach opens the container's OpenCode web URL in a browser when a web port exists; use --no-web to force the TUI attach instead.\nConfigure the runtime image with RM4DEV_IMAGE; default is localhost/rm4dev-agent:nix-fedora.\nimage build and image ensure accept an optional custom image reference.";
 
 #[derive(Debug, Parser)]
 #[command(name = "rm4dev", about = "Manage rm4dev Podman containers", after_help = AFTER_HELP)]
@@ -36,7 +36,7 @@ enum AgentCommand {
     Start(CreateCommandArgs),
     Stop(TargetCommandArgs),
     Rm(TargetCommandArgs),
-    Attach(TargetCommandArgs),
+    Attach(AttachCommandArgs),
     Enter(TargetCommandArgs),
 }
 
@@ -60,12 +60,30 @@ struct CreateCommandArgs {
     )]
     no_shared_auth: bool,
 
+    #[arg(
+        long,
+        help = "Disable the default OpenCode web server for a new container"
+    )]
+    no_web: bool,
+
     #[arg(value_name = "NAME_OR_MOUNT", num_args = 0..)]
     args: Vec<String>,
 }
 
 #[derive(Debug, Args)]
 struct TargetCommandArgs {
+    #[arg(value_name = "NAME")]
+    name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct AttachCommandArgs {
+    #[arg(
+        long,
+        help = "Force TUI attach instead of opening the container's OpenCode web interface"
+    )]
+    no_web: bool,
+
     #[arg(value_name = "NAME")]
     name: Option<String>,
 }
@@ -79,12 +97,14 @@ struct ImageRefArg {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ContainerTarget {
     pub(crate) name: Option<String>,
+    pub(crate) no_web: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CreateContainerArgs {
     pub(crate) name: Option<String>,
     pub(crate) no_shared_auth: bool,
+    pub(crate) no_web: bool,
     pub(crate) mounts: Vec<MountSpec>,
 }
 
@@ -121,17 +141,26 @@ where
             AgentCommand::New(args) => Ok(CliCommand::AgentNew(parse_create_args(
                 &args.args,
                 args.no_shared_auth,
+                args.no_web,
             )?)),
             AgentCommand::Start(args) => Ok(CliCommand::AgentStart(parse_create_args(
                 &args.args,
                 args.no_shared_auth,
+                args.no_web,
             )?)),
-            AgentCommand::Stop(args) => Ok(CliCommand::AgentStop(parse_target_args(args.name)?)),
-            AgentCommand::Rm(args) => Ok(CliCommand::AgentRemove(parse_target_args(args.name)?)),
-            AgentCommand::Attach(args) => {
-                Ok(CliCommand::AgentAttach(parse_target_args(args.name)?))
+            AgentCommand::Stop(args) => {
+                Ok(CliCommand::AgentStop(parse_target_args(args.name, false)?))
             }
-            AgentCommand::Enter(args) => Ok(CliCommand::AgentEnter(parse_target_args(args.name)?)),
+            AgentCommand::Rm(args) => Ok(CliCommand::AgentRemove(parse_target_args(
+                args.name, false,
+            )?)),
+            AgentCommand::Attach(args) => Ok(CliCommand::AgentAttach(parse_target_args(
+                args.name,
+                args.no_web,
+            )?)),
+            AgentCommand::Enter(args) => {
+                Ok(CliCommand::AgentEnter(parse_target_args(args.name, false)?))
+            }
         },
         ScopeCommand::Image(image) => match image.command {
             ImageCommand::Build(args) => Ok(CliCommand::ImageBuild(parse_image_args(args.image)?)),
@@ -177,20 +206,23 @@ fn parse_image_args(image: Option<String>) -> AppResult<ImageCommandArgs> {
     }
 }
 
-fn parse_target_args(name: Option<String>) -> AppResult<ContainerTarget> {
+fn parse_target_args(name: Option<String>, no_web: bool) -> AppResult<ContainerTarget> {
     Ok(ContainerTarget {
         name: name.as_deref().map(normalize_container_name).transpose()?,
+        no_web,
     })
 }
 
 pub(crate) fn parse_create_args(
     args: &[String],
     no_shared_auth: bool,
+    no_web: bool,
 ) -> AppResult<CreateContainerArgs> {
     if args.is_empty() {
         return Ok(CreateContainerArgs {
             name: None,
             no_shared_auth,
+            no_web,
             mounts: Vec::new(),
         });
     }
@@ -209,6 +241,7 @@ pub(crate) fn parse_create_args(
     Ok(CreateContainerArgs {
         name,
         no_shared_auth,
+        no_web,
         mounts,
     })
 }
