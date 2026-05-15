@@ -5,7 +5,7 @@ use crate::cli::{ContainerTarget, CreateContainerArgs};
 use crate::error::{AppError, AppResult};
 use crate::image::{ensure_runtime_image, runtime_image};
 use crate::mounts::MountSpec;
-use crate::naming::{CONTAINER_PREFIX, generate_container_name, is_agent_container_name};
+use crate::naming::{CONTAINER_PREFIX, generate_container_name};
 use crate::process::{run_and_capture, run_interactive};
 use std::collections::BTreeSet;
 use std::env;
@@ -44,6 +44,16 @@ struct ListedContainer {
     status: String,
     web_port: Option<u16>,
     web_password: Option<String>,
+    host_ports: BTreeSet<u16>,
+}
+
+#[derive(Debug, Clone)]
+struct ContainerRow {
+    name: String,
+    image: String,
+    status: String,
+    labels: String,
+    ports: String,
 }
 
 pub(crate) fn precheck() -> AppResult<()> {
@@ -147,24 +157,29 @@ fn enter_shell() -> String {
 }
 
 fn load_agent_containers() -> AppResult<Vec<ListedContainer>> {
-    let output = run_and_capture(
-        "podman",
-        [
-            "ps",
-            "--all",
-            "--format",
-            "{{.Names}}\t{{.Image}}\t{{.Status}}",
-        ],
-    )?;
-    let mut containers = Vec::new();
-    for container in output
-        .lines()
-        .filter_map(parse_listed_container_line)
-        .filter(|container| is_agent_container_name(&container.name))
-    {
-        let web_port = container_web_port_for_container(&container.name)?;
-        containers.push(container.with_web(web_port));
-    }
+    let mut containers = query_agent_container_rows()?
+        .into_iter()
+        .map(|row| {
+            let ContainerRow {
+                name,
+                image,
+                status,
+                labels,
+                ports,
+            } = row;
+            let web_port = parse_web_port_label(&name, &labels)?;
+            let container = ListedContainer {
+                name,
+                image,
+                status,
+                web_port,
+                web_password: None,
+                host_ports: parse_container_ports(&ports),
+            };
+
+            Ok(container.with_web(web_port))
+        })
+        .collect::<AppResult<Vec<_>>>()?;
 
     containers.sort_by(|left, right| left.name.cmp(&right.name));
     Ok(containers)
@@ -245,27 +260,15 @@ impl ListedContainer {
     }
 }
 
-fn parse_listed_container_line(line: &str) -> Option<ListedContainer> {
-    if line.trim().is_empty() {
-        return None;
-    }
-
-    let mut fields = line.splitn(3, '\t');
-    let name = fields.next()?.trim().to_string();
-    let image = fields.next()?.trim().to_string();
-    let status = fields.next()?.trim().to_string();
-
-    Some(ListedContainer {
-        name,
-        image,
-        status,
-        web_port: None,
-        web_password: None,
-    })
-}
-
 fn container_web_port_for_container(name: &str) -> AppResult<Option<u16>> {
-    container_web_port_label(name)
+    let row = query_agent_container_rows()?
+        .into_iter()
+        .find(|container| container.name == name);
+
+    match row {
+        Some(row) => parse_web_port_label(&row.name, &row.labels),
+        None => Ok(None),
+    }
 }
 
 fn resolve_existing_container(target: ContainerTarget) -> AppResult<String> {
@@ -293,13 +296,9 @@ fn resolve_existing_container(target: ContainerTarget) -> AppResult<String> {
 }
 
 fn list_agent_container_names() -> AppResult<Vec<String>> {
-    let output = run_and_capture("podman", ["ps", "-a", "--format", "{{.Names}}"])?;
-    let mut names = output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .filter(|line| is_agent_container_name(line))
-        .map(ToOwned::to_owned)
+    let mut names = query_agent_container_rows()?
+        .into_iter()
+        .map(|row| row.name)
         .collect::<Vec<_>>();
 
     names.sort();
@@ -396,59 +395,97 @@ where
 fn reserved_web_ports() -> AppResult<BTreeSet<u16>> {
     let mut ports = BTreeSet::new();
 
-    for name in list_agent_container_names()? {
-        ports.extend(container_web_ports(&name)?);
+    for container in load_agent_containers()? {
+        if let Some(port) = container.web_port {
+            ports.insert(port);
+        }
+
+        ports.extend(container.host_ports);
     }
 
     Ok(ports)
 }
 
-fn container_web_ports(name: &str) -> AppResult<BTreeSet<u16>> {
-    let mut ports = BTreeSet::new();
-
-    if let Some(port) = container_web_port_label(name)? {
-        ports.insert(port);
-    }
-
-    ports.extend(container_host_ports(name)?);
-    Ok(ports)
-}
-
-fn container_web_port_label(name: &str) -> AppResult<Option<u16>> {
-    let format = format!(
-        "{{{{with index .Config.Labels \"{}\"}}}}{{{{.}}}}{{{{end}}}}",
-        CONTAINER_WEB_PORT_LABEL
-    );
-    let output = run_and_capture("podman", ["inspect", "--format", format.as_str(), name])?;
-    let value = output.trim();
-
-    if value.is_empty() {
-        return Ok(None);
-    }
-
-    let port = value.parse::<u16>().map_err(|_| {
-        AppError::Message(format!(
-            "container `{name}` has an invalid OpenCode web port label `{value}`"
-        ))
-    })?;
-    Ok(Some(port))
-}
-
-fn container_host_ports(name: &str) -> AppResult<BTreeSet<u16>> {
+fn query_agent_container_rows() -> AppResult<Vec<ContainerRow>> {
+    let filter = format!("name=^{}", CONTAINER_PREFIX);
     let output = run_and_capture(
         "podman",
         [
-            "inspect",
+            "ps",
+            "--all",
+            "--filter",
+            filter.as_str(),
             "--format",
-            "{{range $port, $bindings := .HostConfig.PortBindings}}{{range $bindings}}{{.HostPort}} {{end}}{{end}}",
-            name,
+            "{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Labels}}\t{{.Ports}}",
         ],
     )?;
 
-    Ok(output
-        .split_whitespace()
-        .filter_map(|value| value.parse::<u16>().ok())
-        .collect())
+    Ok(output.lines().filter_map(parse_container_row).collect())
+}
+
+fn parse_container_row(line: &str) -> Option<ContainerRow> {
+    if line.trim().is_empty() {
+        return None;
+    }
+
+    let mut fields = line.splitn(5, '\t');
+    Some(ContainerRow {
+        name: fields.next()?.trim().to_string(),
+        image: fields.next()?.trim().to_string(),
+        status: fields.next()?.trim().to_string(),
+        labels: fields.next()?.trim().to_string(),
+        ports: fields.next()?.trim().to_string(),
+    })
+}
+
+fn parse_web_port_label(name: &str, labels: &str) -> AppResult<Option<u16>> {
+    let labels = labels.trim();
+
+    if labels.is_empty() || labels == "<none>" {
+        return Ok(None);
+    }
+
+    for label in labels.split(|ch: char| ch == ',' || ch.is_whitespace()) {
+        let label = label.trim();
+        if label.is_empty() {
+            continue;
+        }
+
+        let Some(value) = label
+            .strip_prefix(CONTAINER_WEB_PORT_LABEL)
+            .and_then(|value| value.strip_prefix('='))
+        else {
+            continue;
+        };
+
+        let port = value.parse::<u16>().map_err(|_| {
+            AppError::Message(format!(
+                "container `{name}` has an invalid OpenCode web port label `{value}`"
+            ))
+        })?;
+        return Ok(Some(port));
+    }
+
+    Ok(None)
+}
+
+fn parse_container_ports(value: &str) -> BTreeSet<u16> {
+    value
+        .split(',')
+        .filter_map(|binding| {
+            let binding = binding.trim();
+            if binding.is_empty() || binding == "<none>" {
+                return None;
+            }
+
+            let (host, _) = binding.split_once("->")?;
+            let host_port = host
+                .trim()
+                .rsplit_once(':')
+                .map_or(host.trim(), |(_, port)| port.trim());
+            host_port.parse::<u16>().ok()
+        })
+        .collect()
 }
 
 fn port_is_available(port: u16) -> bool {
@@ -608,4 +645,56 @@ pub(crate) fn cpu_quota() -> usize {
         .unwrap_or(1);
     let reserved = total / 4;
     total.saturating_sub(reserved).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn parses_container_row_from_ps_output() {
+        let row = parse_container_row(
+            "rm4dev-agent-alpha\tlocalhost/rm4dev-agent:nix-fedora\tUp 2 minutes\torg.rm4dev.opencode.web-port=35080\t127.0.0.1:35080->35080/tcp",
+        )
+        .unwrap();
+
+        assert_eq!(row.name, "rm4dev-agent-alpha");
+        assert_eq!(row.image, "localhost/rm4dev-agent:nix-fedora");
+        assert_eq!(row.status, "Up 2 minutes");
+        assert_eq!(row.labels, "org.rm4dev.opencode.web-port=35080");
+        assert_eq!(row.ports, "127.0.0.1:35080->35080/tcp");
+    }
+
+    #[test]
+    fn parses_host_ports_from_ps_output() {
+        let ports =
+            parse_container_ports("127.0.0.1:35080->35080/tcp, [::1]:35081->35081/tcp, <none>");
+
+        assert_eq!(ports, BTreeSet::from([35080, 35081]));
+    }
+
+    #[test]
+    fn treats_blank_web_port_label_as_missing() {
+        assert_eq!(
+            parse_web_port_label("rm4dev-agent-alpha", "").unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_web_port_label("rm4dev-agent-alpha", "<none>").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn parses_web_port_label_from_labels_output() {
+        assert_eq!(
+            parse_web_port_label(
+                "rm4dev-agent-alpha",
+                "foo=bar,org.rm4dev.opencode.web-port=35080,baz=qux"
+            )
+            .unwrap(),
+            Some(35080)
+        );
+    }
 }
