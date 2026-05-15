@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 const HOST_AUTH_PATH: &str = ".cache/rm4dev/opencode-auth.json";
 const CONTAINER_AUTH_PATH: &str = "/root/.local/share/opencode/auth.json";
 const CONTAINER_WEB_PORT_ENV: &str = "RM4DEV_OPENCODE_WEB_PORT";
-const CONTAINER_WEB_PORT_LABEL: &str = "org.rm4dev.opencode.web-port";
+const CONTAINER_WEB_PORT_LABEL: &str = "online.rm4.rm4dev.opencode.port";
 const CONTAINER_WEB_PASSWORD_ENV: &str = "OPENCODE_SERVER_PASSWORD";
 const ENTER_SHELL_ENV: &str = "RM4DEV_ENTER_SHELL";
 const WEB_PORT_START: u16 = 35080;
@@ -660,14 +660,14 @@ mod tests {
     #[test]
     fn parses_container_row_from_ps_output() {
         let row = parse_container_row(
-            "rm4dev-agent-alpha\tlocalhost/rm4dev-agent:nix-fedora\tUp 2 minutes\tmap[org.rm4dev.opencode.web-port:35080]\t127.0.0.1:35080->35080/tcp",
+            "rm4dev-agent-alpha\tlocalhost/rm4dev-agent:nix-fedora\tUp 2 minutes\tmap[online.rm4.rm4dev.opencode.port:35080]\t127.0.0.1:35080->35080/tcp",
         )
         .unwrap();
 
         assert_eq!(row.name, "rm4dev-agent-alpha");
         assert_eq!(row.image, "localhost/rm4dev-agent:nix-fedora");
         assert_eq!(row.status, "Up 2 minutes");
-        assert_eq!(row.labels, "map[org.rm4dev.opencode.web-port:35080]");
+        assert_eq!(row.labels, "map[online.rm4.rm4dev.opencode.port:35080]");
         assert_eq!(row.ports, "127.0.0.1:35080->35080/tcp");
     }
 
@@ -696,7 +696,7 @@ mod tests {
         assert_eq!(
             parse_web_port_label(
                 "rm4dev-agent-alpha",
-                "map[foo:bar org.rm4dev.opencode.web-port:35080 baz:qux]"
+                "map[foo:bar online.rm4.rm4dev.opencode.port:35080 baz:qux]"
             )
             .unwrap(),
             Some(35080)

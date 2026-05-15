@@ -13,7 +13,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_IMAGE: &str = "localhost/rm4dev-agent:nix-fedora";
-const IMAGE_CONTEXT_HASH_LABEL: &str = "org.rm4dev.context-hash";
+const IMAGE_CONTEXT_HASH_LABEL: &str = "online.rm4.rm4dev.context-hash";
 static NIX_FEDORA_CONTEXT: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/rm4dev-agent/nix-fedora");
 const IMAGE_ENV: &str = "RM4DEV_IMAGE";
 
