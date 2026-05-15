@@ -445,7 +445,12 @@ fn parse_web_port_label(name: &str, labels: &str) -> AppResult<Option<u16>> {
         return Ok(None);
     }
 
-    for label in labels.split(|ch: char| ch == ',' || ch.is_whitespace()) {
+    let labels = labels
+        .strip_prefix("map[")
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(labels);
+
+    for label in labels.split_whitespace() {
         let label = label.trim();
         if label.is_empty() {
             continue;
@@ -453,7 +458,7 @@ fn parse_web_port_label(name: &str, labels: &str) -> AppResult<Option<u16>> {
 
         let Some(value) = label
             .strip_prefix(CONTAINER_WEB_PORT_LABEL)
-            .and_then(|value| value.strip_prefix('='))
+            .and_then(|value| value.strip_prefix(':').or_else(|| value.strip_prefix('=')))
         else {
             continue;
         };
@@ -655,14 +660,14 @@ mod tests {
     #[test]
     fn parses_container_row_from_ps_output() {
         let row = parse_container_row(
-            "rm4dev-agent-alpha\tlocalhost/rm4dev-agent:nix-fedora\tUp 2 minutes\torg.rm4dev.opencode.web-port=35080\t127.0.0.1:35080->35080/tcp",
+            "rm4dev-agent-alpha\tlocalhost/rm4dev-agent:nix-fedora\tUp 2 minutes\tmap[org.rm4dev.opencode.web-port:35080]\t127.0.0.1:35080->35080/tcp",
         )
         .unwrap();
 
         assert_eq!(row.name, "rm4dev-agent-alpha");
         assert_eq!(row.image, "localhost/rm4dev-agent:nix-fedora");
         assert_eq!(row.status, "Up 2 minutes");
-        assert_eq!(row.labels, "org.rm4dev.opencode.web-port=35080");
+        assert_eq!(row.labels, "map[org.rm4dev.opencode.web-port:35080]");
         assert_eq!(row.ports, "127.0.0.1:35080->35080/tcp");
     }
 
@@ -691,7 +696,7 @@ mod tests {
         assert_eq!(
             parse_web_port_label(
                 "rm4dev-agent-alpha",
-                "foo=bar,org.rm4dev.opencode.web-port=35080,baz=qux"
+                "map[foo:bar org.rm4dev.opencode.web-port:35080 baz:qux]"
             )
             .unwrap(),
             Some(35080)
