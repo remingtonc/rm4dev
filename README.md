@@ -16,6 +16,8 @@ The Agent may install software and generally have full control over its environm
 
 The expected workflow is for development to still be principally controlled by a human and operate in tandem with a terminal and IDE. The terminal is the interface to these agentic containers. The developer is still expected to have an IDE for code development and review. Having the AI operating within a terminal is particularly flexible, and also provides easy access to the Agent's system for troubleshooting and configuration as-needed.
 
+For repo work that should stay isolated or be split across multiple parallel tasks, prefer `git wt` worktrees inside the container. The default agent image includes `git-wt`, and the agent instructions tell OpenCode to use `git wt add`, `git wt switch`, and `git wt status` instead of sharing one checkout.
+
 An example workflow for a new agent container on a particular git repo:
 ```bash
 ~/Development/q 
@@ -50,6 +52,7 @@ rm4dev-agent-stalwart    localhost/rm4dev-agent:nix-fedora  Exited (0) 9 seconds
   - Privileged containers are used to enable podman-in-podman. Rootful-in-rootless does not seem possible without privileged. The container is still rootless, but will have your user capabilities.
   - Discussion: https://github.com/containers/podman/discussions/28307
 - Fedora-based image with nix for userspace packages. `brew` was originally used but `nix` enables some useful capabilities for the Agent in troubleshooting, investigation, etc. without being beholden to NixOS but still having a highly flexible package manager separate from the system libraries.
+  - `git-wt` is included so agent tasks can use dedicated worktrees instead of sharing a single checkout.
   - Volumes are not used. This simplifies deployment and makes the individual container portable. The alternative is many different volumes.
 - Opens tmux with OpenCode web plus an attached terminal view, caches OpenCode `auth.json` for non-API key logins (OpenAI Codex via ChatGPT subscription).
 - Developed in Rust.

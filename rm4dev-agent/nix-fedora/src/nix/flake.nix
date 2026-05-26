@@ -7,10 +7,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    git-wt.url = "github:ahmedelgabri/git-wt";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { nixpkgs, nixpkgs-unstable, flake-utils, ... }:
+  outputs = { nixpkgs, nixpkgs-unstable, git-wt, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -25,7 +26,7 @@
           ];
         };
 
-        toolPackages = import ./packages.nix { inherit pkgs; };
+        toolPackages = import ./packages.nix { inherit pkgs system git-wt; };
 
         profile = pkgs.buildEnv {
           name = "rm4dev-devtools";
