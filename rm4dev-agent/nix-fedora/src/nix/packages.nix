@@ -1,7 +1,7 @@
 # Copyright (C) 2026 RM4 LLC
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-{ pkgs, system, git-wt }:
+{ pkgs }:
 [
   pkgs.bun
   pkgs.cacert
@@ -33,5 +33,4 @@
   pkgs.ninja
   pkgs.btop
   pkgs.httpie
-  git-wt.packages.${system}.default
 ]

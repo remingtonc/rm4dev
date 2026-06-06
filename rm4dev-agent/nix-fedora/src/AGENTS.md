@@ -9,4 +9,3 @@ Core working dir unless told otherwise is `/work`.
 `git` and `gh` are already configured for GitHub access.
 Make `git` branches and commits when relevant and on substantial progress.
 You are running as root in a rootless container.
-Prefer `git wt` for repository worktrees when a task should be isolated or run in parallel with other work. Use `git wt add` or `git wt switch` to get a dedicated checkout, and `git wt status` before making branch changes.

@@ -11,7 +11,7 @@ RUN dnf update -y --quiet \
 USER podman
 WORKDIR /home/podman
 # Install desirable utilities
-RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew tap ahmedelgabri/git-wt && brew install --quiet gcc oven-sh/bun/bun python uv go rustup sqlite jq ripgrep fd fzf zstd just httpie libpq ffmpeg anomalyco/tap/opencode ahmedelgabri/git-wt/git-wt tmux gh
+RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && brew install --quiet gcc oven-sh/bun/bun python uv go rustup sqlite jq ripgrep fd fzf zstd just httpie libpq ffmpeg anomalyco/tap/opencode tmux gh
 # Install Rust via rustup rather than directly Homebrew
 RUN eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)" && rustup default stable
 # Install Playwright dependencies
