@@ -23,6 +23,8 @@ COPY src/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 WORKDIR /work
 COPY src/AGENTS.md /work/AGENTS.md
+COPY src/skills /work/.agents/skills
+ENV RM4_BASE_DIR=/work/rm4
 # Login shell for entrypoint.
 ENTRYPOINT ["/bin/bash"]
 CMD ["-lc", "/entrypoint.sh"]

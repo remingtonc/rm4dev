@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # Usage: git-worktree-clone.sh <repository-url>
 set -eux
+BASE_DIR=${RM4_BASE_DIR:-~/rm4}
 # Bare repositories
-mkdir -p ~/rm4/bare-repos
-pushd ~/rm4/bare-repos
+mkdir -p $BASE_DIR/bare-repos
+pushd $BASE_DIR/bare-repos
 git clone --bare $1
 REPO_DIR=$(basename $1)
 REPO_PATH=$(realpath $REPO_DIR)
 REPO_NAME=$(basename $REPO_DIR .git)
 popd
 # Git worktrees
-mkdir -p ~/rm4/worktrees/$REPO_NAME
-WORKTREE_PATH=$(realpath ~/rm4/worktrees/$REPO_NAME)
+mkdir -p $BASE_DIR/worktrees/$REPO_NAME
+WORKTREE_PATH=$(realpath $BASE_DIR/worktrees/$REPO_NAME)
 cd $WORKTREE_PATH
 echo "gitdir: $REPO_PATH" > .git
 git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
