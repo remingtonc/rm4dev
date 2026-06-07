@@ -1,3 +1,4 @@
+---
 name: rm4-project-git
 description: git clone, git worktree, git status, git commit, branch, checkout, merge, rebase, push, pull: use when working in any git repository; prefer RM4 worktrees over ad hoc git commands.
 ---

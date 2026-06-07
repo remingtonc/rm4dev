@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: git-worktree-clone.sh <repository-url>
-set -eux
+set -eu
 BASE_DIR=${RM4_BASE_DIR:-~/rm4}
 # Bare repositories
 mkdir -p $BASE_DIR/bare-repos
